@@ -78,6 +78,17 @@
   background: rgba(255, 255, 255, 0.32);
 }
 
+#nk-order-panel .nk-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 7px;
+}
+
+#nk-order-panel .nk-btn.nk-copied {
+  background: rgba(255, 255, 255, 0.45);
+}
+
 #nk-order-panel .nk-menu-wrap {
   position: relative;
 }
@@ -125,6 +136,31 @@
 
 #nk-order-panel.nk-collapsed .nk-body {
   display: none;
+}
+
+#nk-order-panel .nk-update {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 7px 10px;
+  background: #fff7e6;
+  border: 1px solid #f0c36d;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #7a5b00;
+}
+
+#nk-order-panel .nk-update-link {
+  color: #2f7d4f;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+#nk-order-panel .nk-update-link:hover {
+  text-decoration: underline;
 }
 
 #nk-order-panel .nk-strip {

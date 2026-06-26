@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Nieuwkoop Order Summary",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Shows a per-order summary panel: plant / pot / soil counts grouped by species, split by assembled vs not assembled.",
   "icons": {
     "16": "icons/icon16.png",
@@ -14,9 +14,11 @@
   "background": {
     "service_worker": "background.js"
   },
+  "permissions": ["storage"],
   "host_permissions": [
     "https://backend.nieuwkoop-europe.com/*",
-    "https://www.nieuwkoop-europe.com/*"
+    "https://www.nieuwkoop-europe.com/*",
+    "https://raw.githubusercontent.com/theanthonybrooks/plant-order-summary/*"
   ],
   "content_scripts": [
     {

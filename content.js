@@ -9,6 +9,14 @@
   let fetchedOrderNr = null
   let sortMode = "number" // "number" (Total desc) | "name" (A–Z)
 
+  // Update check (compares against manifest.json in the GitHub repo).
+  const REPO = "theanthonybrooks/plant-order-summary"
+  const REPO_URL = `https://github.com/${REPO}`
+  const MANIFEST_URL = `https://raw.githubusercontent.com/${REPO}/main/manifest.json`
+  const CURRENT_VERSION = chrome.runtime.getManifest().version
+  const DAY_MS = 24 * 60 * 60 * 1000
+  let latestVersion = null // newest version seen on GitHub (cached across the day)
+
   const DEBUG = false
   const log = (...args) => {
     if (DEBUG) console.log("[NK content]", ...args)
@@ -267,6 +275,117 @@
     setTimeout(() => w.print(), 150)
   }
 
+  // ---------------------------------------------------------------------------
+  // Update check + sharing
+  // ---------------------------------------------------------------------------
+  // Numeric semver-ish compare: returns >0 if a is newer than b.
+  const cmpVersion = (a, b) => {
+    const pa = String(a).split(".").map(Number)
+    const pb = String(b).split(".").map(Number)
+    for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+      const d = (pa[i] || 0) - (pb[i] || 0)
+      if (d) return d
+    }
+    return 0
+  }
+
+  const updateAvailable = () =>
+    !!latestVersion && cmpVersion(latestVersion, CURRENT_VERSION) > 0
+
+  // Check GitHub for a newer version at most once a day; cache the result.
+  const maybeCheckUpdate = async () => {
+    try {
+      const { nkLastCheck = 0, nkLatestVersion = null } =
+        await chrome.storage.local.get(["nkLastCheck", "nkLatestVersion"])
+      latestVersion = nkLatestVersion
+      if (Date.now() - nkLastCheck > DAY_MS) {
+        const r = await fetch(MANIFEST_URL, { cache: "no-store" })
+        if (r.ok) {
+          const remote = await r.json()
+          latestVersion = remote.version || latestVersion
+          await chrome.storage.local.set({
+            nkLastCheck: Date.now(),
+            nkLatestVersion: latestVersion,
+          })
+        }
+      }
+      log("update check: current", CURRENT_VERSION, "latest", latestVersion)
+      // If the open panel doesn't show the banner yet, add it now.
+      if (updateAvailable()) {
+        const body = document.querySelector(`#${PANEL_ID} .nk-body`)
+        if (body && !body.querySelector(".nk-update")) {
+          body.insertBefore(buildUpdateBanner(), body.firstChild)
+        }
+      }
+    } catch (e) {
+      log("update check failed:", e && e.message)
+    }
+  }
+
+  const buildUpdateBanner = () => {
+    const bar = el("div", "nk-update")
+    bar.appendChild(
+      el("span", "nk-update-text", `Update available — v${latestVersion}`)
+    )
+    const link = el("a", "nk-update-link", "Get it on GitHub")
+    link.href = REPO_URL
+    link.target = "_blank"
+    link.rel = "noopener noreferrer"
+    bar.appendChild(link)
+    return bar
+  }
+
+  // Build the Feather "share-2" icon as DOM nodes (avoids innerHTML so it works
+  // even under the host page's Trusted Types CSP). Inherits color via currentColor.
+  const SVG_NS = "http://www.w3.org/2000/svg"
+  const svgEl = (tag, attrs) => {
+    const n = document.createElementNS(SVG_NS, tag)
+    for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v)
+    return n
+  }
+  const buildShareIcon = () => {
+    const svg = svgEl("svg", {
+      width: "13",
+      height: "13",
+      viewBox: "0 0 24 24",
+      fill: "none",
+      stroke: "currentColor",
+      "stroke-width": "2",
+      "stroke-linecap": "round",
+      "stroke-linejoin": "round",
+      "aria-hidden": "true",
+    })
+    svg.appendChild(svgEl("circle", { cx: "18", cy: "5", r: "3" }))
+    svg.appendChild(svgEl("circle", { cx: "6", cy: "12", r: "3" }))
+    svg.appendChild(svgEl("circle", { cx: "18", cy: "19", r: "3" }))
+    svg.appendChild(svgEl("line", { x1: "8.59", y1: "13.51", x2: "15.42", y2: "17.49" }))
+    svg.appendChild(svgEl("line", { x1: "15.41", y1: "6.51", x2: "8.59", y2: "10.49" }))
+    return svg
+  }
+
+  // Share the extension's GitHub link (native share sheet, else copy to clipboard).
+  const shareExtension = async (btn) => {
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: "Nieuwkoop Order Summary", url: REPO_URL })
+        return
+      } catch (e) {
+        if (e && e.name === "AbortError") return // user dismissed the share sheet
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(REPO_URL)
+      btn.classList.add("nk-copied")
+      btn.title = "Link copied!"
+      setTimeout(() => {
+        btn.classList.remove("nk-copied")
+        btn.title = "Share this extension"
+      }, 1500)
+    } catch {
+      /* clipboard unavailable — nothing more we can do */
+    }
+  }
+
   const render = (summary) => {
     const existing = document.getElementById(PANEL_ID)
     const collapsed = existing && existing.classList.contains("nk-collapsed")
@@ -319,6 +438,13 @@
     menuWrap.appendChild(menuBtn)
     menuWrap.appendChild(menu)
 
+    // Share-this-extension button (sits next to the Export dropdown).
+    const shareBtn = el("button", "nk-btn nk-icon-btn")
+    shareBtn.title = "Share this extension"
+    shareBtn.setAttribute("aria-label", "Share this extension")
+    shareBtn.appendChild(buildShareIcon())
+    shareBtn.addEventListener("click", () => shareExtension(shareBtn))
+
     const collapseBtn = el("button", "nk-btn", collapsed ? "+" : "–")
     collapseBtn.title = "Collapse / expand"
     collapseBtn.addEventListener("click", () => {
@@ -329,12 +455,16 @@
     closeBtn.title = "Close (also closes the order details)"
     closeBtn.addEventListener("click", closePanel)
     controls.appendChild(menuWrap)
+    controls.appendChild(shareBtn)
     controls.appendChild(collapseBtn)
     controls.appendChild(closeBtn)
     header.appendChild(controls)
     panel.appendChild(header)
 
     const body = el("div", "nk-body")
+
+    // Show the update banner above everything if a newer version is known.
+    if (updateAvailable()) body.appendChild(buildUpdateBanner())
 
     const strip = el("div", "nk-strip")
     const plants = summary.buckets.plant
@@ -475,6 +605,7 @@
       closePanel()
       return
     }
+    maybeCheckUpdate() // fire-and-forget; throttled to once a day
     const orderNr = currentOrderNr()
     if (currentSummary && fetchedOrderNr === orderNr) {
       log("toggle: opening cached summary for order", orderNr)

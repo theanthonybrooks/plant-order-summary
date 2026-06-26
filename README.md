@@ -49,12 +49,20 @@ icons/            toolbar icons
    - **Export ▾ → Print** to open a clean printable view.
      - Note: Print opens a popup window — allow popups for the site if your
        browser blocks it.
+   - **Share** (the icon next to Export) to share/copy the link to this
+     extension's GitHub page so others can install it.
 
 ## Updating
 
-After pulling new code, return to `chrome://extensions` and click the **reload**
-(↻) icon on the extension's card. Refresh any open Nieuwkoop tabs so the latest
-content script loads.
+The extension checks GitHub for a newer version about once a day. When one is
+available, a banner appears at the top of the panel with a link to the repo.
+
+Updating itself is manual (an unpacked extension can't replace itself):
+
+1. Download/pull the latest files into the same folder.
+2. Go to `chrome://extensions` and click the **reload** (↻) icon on the
+   extension's card.
+3. Refresh any open Nieuwkoop tabs so the latest content script loads.
 
 ## Troubleshooting
 
@@ -69,7 +77,9 @@ content script loads.
 
 The extension runs only on `www.nieuwkoop-europe.com` and reads order data from
 `backend.nieuwkoop-europe.com` using the session token the site already stores in
-your browser. It doesn't send your data anywhere else.
+your browser. It doesn't send your data anywhere else. For update checks it makes
+a plain read request to the project's public `manifest.json` on GitHub to compare
+version numbers — no account or order data is included.
 
 It is **read-only**: it only reads order data to display, export, or print a
 summary. It cannot and does not act on your behalf — it never creates, edits,
