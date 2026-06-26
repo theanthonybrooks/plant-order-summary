@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "Nieuwkoop Order Summary",
+  "version": "1.0.0",
+  "description": "Shows a per-order summary panel: plant / pot / soil counts grouped by species, split by assembled vs not assembled.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_title": "Toggle Nieuwkoop order summary"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "host_permissions": [
+    "https://backend.nieuwkoop-europe.com/*",
+    "https://www.nieuwkoop-europe.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://www.nieuwkoop-europe.com/*"],
+      "js": ["content.js"],
+      "css": ["panel.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}

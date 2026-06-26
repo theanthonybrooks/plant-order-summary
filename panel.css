@@ -1,0 +1,232 @@
+#nk-order-panel {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  z-index: 9999;
+  width: 480px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 32px);
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+  color: #1a1a1a;
+  border: 1px solid #d0d5dd;
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
+  font-size: 13px;
+  line-height: 1.4;
+  overflow: hidden;
+}
+
+#nk-order-panel * {
+  box-sizing: border-box;
+}
+
+#nk-order-panel .nk-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  background: #2f7d4f;
+  color: #fff;
+  flex: 0 0 auto;
+}
+
+#nk-order-panel .nk-title {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+#nk-order-panel .nk-order-nr {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+#nk-order-panel .nk-ref {
+  font-size: 11px;
+  opacity: 0.85;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#nk-order-panel .nk-controls {
+  display: flex;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+#nk-order-panel .nk-btn {
+  appearance: none;
+  border: none;
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 5px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+#nk-order-panel .nk-btn:hover {
+  background: rgba(255, 255, 255, 0.32);
+}
+
+#nk-order-panel .nk-menu-wrap {
+  position: relative;
+}
+
+#nk-order-panel .nk-menu {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  min-width: 130px;
+  background: #fff;
+  border: 1px solid #d0d5dd;
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+  z-index: 1;
+}
+
+#nk-order-panel .nk-menu.nk-open {
+  display: block;
+}
+
+#nk-order-panel .nk-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  appearance: none;
+  border: none;
+  background: none;
+  color: #1a1a1a;
+  font-size: 12px;
+  padding: 7px 10px;
+  cursor: pointer;
+}
+
+#nk-order-panel .nk-menu-item:hover {
+  background: #f2f6f3;
+}
+
+#nk-order-panel .nk-body {
+  overflow-y: auto;
+  padding: 10px 12px 12px;
+  flex: 1 1 auto;
+}
+
+#nk-order-panel.nk-collapsed .nk-body {
+  display: none;
+}
+
+#nk-order-panel .nk-strip {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+#nk-order-panel .nk-stat {
+  text-align: center;
+  background: #f2f6f3;
+  border: 1px solid #e2e8e4;
+  border-radius: 6px;
+  padding: 6px 2px;
+}
+
+#nk-order-panel .nk-stat-num {
+  font-size: 16px;
+  font-weight: 700;
+  color: #2f7d4f;
+}
+
+#nk-order-panel .nk-stat-label {
+  font-size: 10px;
+  color: #5b6b60;
+  margin-top: 2px;
+}
+
+#nk-order-panel .nk-section {
+  margin-bottom: 14px;
+}
+
+#nk-order-panel .nk-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 4px;
+}
+
+#nk-order-panel .nk-section-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #2f7d4f;
+}
+
+#nk-order-panel .nk-sort {
+  max-width: fit-content;
+  appearance: auto;
+  font-size: 11px;
+  color: #1a1a1a;
+  background: #fff;
+  border: 1px solid #d0d5dd;
+  border-radius: 5px;
+  padding: 2px 4px;
+  cursor: pointer;
+}
+
+#nk-order-panel .nk-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+#nk-order-panel .nk-table th,
+#nk-order-panel .nk-table td {
+  padding: 3px 5px;
+  border-bottom: 1px solid #eef1ef;
+  vertical-align: top;
+}
+
+#nk-order-panel .nk-table th {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #5b6b60;
+  text-align: right;
+  border-bottom: 1px solid #d0d5dd;
+}
+
+#nk-order-panel .nk-col-name {
+  text-align: left !important;
+  word-break: break-word;
+}
+
+#nk-order-panel .nk-col-num {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+#nk-order-panel .nk-empty {
+  padding: 6px 2px;
+  color: #5b6b60;
+  font-size: 12px;
+}
+
+#nk-order-panel .nk-table tfoot td {
+  font-weight: 700;
+  border-top: 2px solid #d0d5dd;
+  border-bottom: none;
+}
