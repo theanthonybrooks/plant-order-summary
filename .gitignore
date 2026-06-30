@@ -5,3 +5,6 @@ mock_data.json
 # OS / editor cruft
 .DS_Store
 Thumbs.db
+
+# VSCode workspace file
+Nieuwkoop.code-workspace
