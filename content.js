@@ -1,23 +1,30 @@
-// Fetches the order JSON directly using the JWT the app stores in localStorage['currentUser']
 ;(() => {
   "use strict"
 
   const PANEL_ID = "nk-order-panel"
-  const BACKEND = "https://backend.nieuwkoop-europe.com/overview/en/orders/by-id/"
+  const BACKEND =
+    "https://backend.nieuwkoop-europe.com/overview/en/orders/by-id/"
   const TOKEN_KEY = "currentUser"
   let currentSummary = null
   let fetchedOrderNr = null
-  let sortMode = "number" // "number" (Total desc) | "name" (A–Z)
+  let sortMode = "number"
+  let backorderOpen = true // expanded by default so the warning is visible
 
-  // Update check (compares against manifest.json in the GitHub repo).
   const REPO = "theanthonybrooks/plant-order-summary"
   const REPO_URL = `https://github.com/${REPO}`
   const MANIFEST_URL = `https://raw.githubusercontent.com/${REPO}/main/manifest.json`
   const CURRENT_VERSION = chrome.runtime.getManifest().version
   const DAY_MS = 24 * 60 * 60 * 1000
-  let latestVersion = null // newest version seen on GitHub (cached across the day)
+  let latestVersion = null
 
-  const DEBUG = false
+  // Enable verbose logging with `localStorage.nkDebug = "1"` then reload.
+  const DEBUG = (() => {
+    try {
+      return localStorage.getItem("nkDebug") === "1"
+    } catch {
+      return false
+    }
+  })()
   const log = (...args) => {
     if (DEBUG) console.log("[NK content]", ...args)
   }
@@ -26,11 +33,11 @@
   // ---------------------------------------------------------------------------
   // Classification
   // ---------------------------------------------------------------------------
-  // Prefer the explicit ProductType field; fall back to the Itemcode prefix.
+  // Prefer the explicit ProductType field; fall back to the item-code prefix.
   const PRODUCT_TYPE_MAP = {
     Plants: "plant",
     Planters: "pot",
-    Equipment: "pot",
+    Equipment: "accessory",
     Assembly: "soil",
     "Substrates and top layers": "soil",
   }
@@ -45,9 +52,13 @@
   }
 
   const classify = (line) => {
-    const pt = line && line.ProductType
+    const pt =
+      (line && line.ProductType) ||
+      (line && line.productType && line.productType.name)
     if (pt && PRODUCT_TYPE_MAP[pt]) return PRODUCT_TYPE_MAP[pt]
-    const code = line && line.Itemcode ? String(line.Itemcode) : ""
+    const code = line
+      ? String(line.Itemcode || (line.variant && line.variant.sku) || "")
+      : ""
     const first = code.charAt(0).toUpperCase()
     return PREFIX_MAP[first] || "other"
   }
@@ -64,41 +75,105 @@
   // ---------------------------------------------------------------------------
   // Summarizer (pure)
   // ---------------------------------------------------------------------------
+  const emptyBuckets = () => ({
+    plant: { groups: {}, total: 0, assembled: 0, notAssembled: 0 },
+    pot: { groups: {}, total: 0, assembled: 0, notAssembled: 0 },
+    soil: { groups: {}, total: 0, assembled: 0, notAssembled: 0 },
+    accessory: { groups: {}, total: 0, assembled: 0, notAssembled: 0 },
+    other: { groups: {}, total: 0, assembled: 0, notAssembled: 0 },
+  })
+
+  const addToBucket = (bucket, name, qty, isAssembled) => {
+    let g = bucket.groups[name]
+    if (!g) {
+      g = bucket.groups[name] = {
+        name,
+        total: 0,
+        assembled: 0,
+        notAssembled: 0,
+      }
+    }
+    g.total += qty
+    bucket.total += qty
+    if (isAssembled) {
+      g.assembled += qty
+      bucket.assembled += qty
+    } else {
+      g.notAssembled += qty
+      bucket.notAssembled += qty
+    }
+  }
+
   const summarize = (order) => {
     const lines = Array.isArray(order.SalesOrderLines)
       ? order.SalesOrderLines
       : []
-    const buckets = {
-      plant: { groups: {}, total: 0, assembled: 0, notAssembled: 0 },
-      pot: { groups: {}, total: 0, assembled: 0, notAssembled: 0 },
-      soil: { groups: {}, total: 0, assembled: 0, notAssembled: 0 },
-      other: { groups: {}, total: 0, assembled: 0, notAssembled: 0 },
-    }
+    const buckets = emptyBuckets()
 
     for (const line of lines) {
-      const bucket = buckets[classify(line)]
-      const qty = Number(line.Quantity) || 0
-      const isAssembled = !!line.AssemblyGroup
-      const name = normalizeName(line.Description)
+      addToBucket(
+        buckets[classify(line)],
+        normalizeName(line.Description),
+        Number(line.Quantity) || 0,
+        !!line.AssemblyGroup
+      )
+    }
 
-      let g = bucket.groups[name]
-      if (!g) {
-        g = bucket.groups[name] = {
-          name,
-          total: 0,
-          assembled: 0,
-          notAssembled: 0,
-        }
-      }
-      g.total += qty
-      bucket.total += qty
-      if (isAssembled) {
-        g.assembled += qty
-        bucket.assembled += qty
-      } else {
-        g.notAssembled += qty
-        bucket.notAssembled += qty
-      }
+    for (const b of Object.values(buckets)) {
+      b.rows = Object.values(b.groups)
+    }
+
+    const orderNr = order.OrderNr || ""
+    return {
+      title: orderNr ? `Order ${orderNr}` : "Order summary",
+      orderNr,
+      reference: order.Reference || order.ExternalReference || "",
+      lineCount: lines.length,
+      buckets,
+    }
+  }
+
+  const collectBackorders = (items) => {
+    const groups = {}
+    for (const line of items) {
+      const nc =
+        line.variant &&
+        line.variant.availability &&
+        line.variant.availability.noChannel
+      if (!nc) continue
+      const qty = Number(line.quantity) || 0
+      const avail = Number(nc.availableQuantity) || 0
+      const days = Number(nc.restockableInDays) || 0
+      if (avail >= qty || days <= 0) continue
+      const name = normalizeName(line.name)
+      const key = `${name}|${days}`
+      let g = groups[key]
+      if (!g) g = groups[key] = { name, short: 0, days, expected: null }
+      g.short += qty - avail
+      if (
+        nc.expectedDelivery &&
+        (!g.expected || nc.expectedDelivery < g.expected)
+      )
+        g.expected = nc.expectedDelivery
+    }
+    return Object.values(groups).sort(
+      (a, b) => a.days - b.days || a.name.localeCompare(b.name)
+    )
+  }
+
+  const summarizeCart = (cart) => {
+    const items = Array.isArray(cart.lineItems) ? cart.lineItems : []
+    const buckets = emptyBuckets()
+
+    for (const line of items) {
+      const fields = (line.custom && line.custom.customFieldsRaw) || []
+      const isAssembled = fields.some((f) => f && f.name === "GroupID")
+      addToBucket(
+        buckets[classify(line)],
+        normalizeName(line.name),
+        Number(line.quantity) || 0,
+        isAssembled
+      )
     }
 
     for (const b of Object.values(buckets)) {
@@ -106,10 +181,16 @@
     }
 
     return {
-      orderNr: order.OrderNr || "",
-      reference: order.Reference || order.ExternalReference || "",
-      lineCount: lines.length,
+      title: "Basket",
+      orderNr: "",
+      reference: "",
+      isCart: true,
+      lineCount:
+        cart.totalQuantityLineItems != null
+          ? cart.totalQuantityLineItems
+          : items.length,
       buckets,
+      backorders: collectBackorders(items),
     }
   }
 
@@ -120,6 +201,7 @@
     { key: "plant", title: "Plants", nameLabel: "Species" },
     { key: "pot", title: "Pots", nameLabel: "Name" },
     { key: "soil", title: "Soil", nameLabel: "Name" },
+    { key: "accessory", title: "Accessories", nameLabel: "Name", simple: true },
     { key: "other", title: "Other", nameLabel: "Name" },
   ]
 
@@ -153,17 +235,22 @@
     closeHostModal()
   }
 
-  const buildSectionTable = (title, bucket, nameLabel, controlEl) => {
+  // `simple` sections (e.g. Accessories) show only Name + Total — no
+  // Prepotted/Regular split.
+  const buildSectionTable = (title, bucket, nameLabel, controlEl, simple) => {
     const wrap = el("div", "nk-section")
     const head = el("div", "nk-section-head")
     head.appendChild(el("h3", "nk-section-title", title))
     if (controlEl) head.appendChild(controlEl)
     wrap.appendChild(head)
 
+    const headers = simple
+      ? [nameLabel || "Name", "Total"]
+      : [nameLabel || "Name", "Total", "Prepotted", "Regular"]
     const table = el("table", "nk-table")
     const thead = el("thead")
     const hr = el("tr")
-    ;[nameLabel || "Name", "Total", "Prepotted", "Regular"].forEach((h, i) => {
+    headers.forEach((h, i) => {
       hr.appendChild(el("th", i === 0 ? "nk-col-name" : "nk-col-num", h))
     })
     thead.appendChild(hr)
@@ -175,8 +262,10 @@
       const tr = el("tr")
       tr.appendChild(el("td", "nk-col-name", r.name))
       tr.appendChild(el("td", "nk-col-num", String(r.total)))
-      tr.appendChild(el("td", "nk-col-num", String(r.assembled)))
-      tr.appendChild(el("td", "nk-col-num", String(r.notAssembled)))
+      if (!simple) {
+        tr.appendChild(el("td", "nk-col-num", String(r.assembled)))
+        tr.appendChild(el("td", "nk-col-num", String(r.notAssembled)))
+      }
       tbody.appendChild(tr)
     }
     table.appendChild(tbody)
@@ -185,12 +274,64 @@
     const fr = el("tr")
     fr.appendChild(el("td", "nk-col-name", "Total"))
     fr.appendChild(el("td", "nk-col-num", String(bucket.total)))
-    fr.appendChild(el("td", "nk-col-num", String(bucket.assembled)))
-    fr.appendChild(el("td", "nk-col-num", String(bucket.notAssembled)))
+    if (!simple) {
+      fr.appendChild(el("td", "nk-col-num", String(bucket.assembled)))
+      fr.appendChild(el("td", "nk-col-num", String(bucket.notAssembled)))
+    }
     tfoot.appendChild(fr)
     table.appendChild(tfoot)
 
     wrap.appendChild(table)
+    return wrap
+  }
+
+  const buildBackorderSection = (list) => {
+    const wrap = el("div", "nk-backorder")
+    if (backorderOpen) wrap.classList.add("nk-open")
+
+    const totalShort = list.reduce((n, g) => n + g.short, 0)
+    const head = el("button", "nk-backorder-head")
+    head.appendChild(
+      el(
+        "span",
+        "nk-backorder-title",
+        `⚠ Backordered: ${list.length} item${
+          list.length === 1 ? "" : "s"
+        } (${totalShort} unavailable)`
+      )
+    )
+    const toggle = el("span", "nk-backorder-toggle", backorderOpen ? "-" : "+")
+    head.appendChild(toggle)
+    head.addEventListener("click", () => {
+      backorderOpen = !backorderOpen
+      wrap.classList.toggle("nk-open", backorderOpen)
+      toggle.textContent = backorderOpen ? "-" : "+"
+    })
+    wrap.appendChild(head)
+
+    const bodyEl = el("div", "nk-backorder-body")
+    const table = el("table", "nk-table")
+    const thead = el("thead")
+    const hr = el("tr")
+    ;["Item", "Short", "Restock"].forEach((h, i) => {
+      hr.appendChild(el("th", i === 0 ? "nk-col-name" : "nk-col-num", h))
+    })
+    thead.appendChild(hr)
+    table.appendChild(thead)
+
+    const tbody = el("tbody")
+    for (const g of list) {
+      const tr = el("tr")
+      tr.appendChild(el("td", "nk-col-name", g.name))
+      tr.appendChild(el("td", "nk-col-num", String(g.short)))
+      tr.appendChild(
+        el("td", "nk-col-num", `${g.days} day${g.days === 1 ? "" : "s"}`)
+      )
+      tbody.appendChild(tr)
+    }
+    table.appendChild(tbody)
+    bodyEl.appendChild(table)
+    wrap.appendChild(bodyEl)
     return wrap
   }
 
@@ -208,24 +349,32 @@
       if (!b.total) continue
       const sorted = [...b.rows].sort(SORTERS[sortMode] || SORTERS.number)
       for (const r of sorted) {
-        rows.push([s.title, r.name, r.total, r.assembled, r.notAssembled])
+        rows.push(
+          s.simple
+            ? [s.title, r.name, r.total, "", ""]
+            : [s.title, r.name, r.total, r.assembled, r.notAssembled]
+        )
       }
-      rows.push([`${s.title} total`, "", b.total, b.assembled, b.notAssembled])
+      rows.push(
+        s.simple
+          ? [`${s.title} total`, "", b.total, "", ""]
+          : [`${s.title} total`, "", b.total, b.assembled, b.notAssembled]
+      )
     }
     const csv = rows.map((r) => r.map(csvCell).join(",")).join("\r\n")
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" })
     const url = URL.createObjectURL(blob)
     const a = el("a")
     a.href = url
-    a.download = `order-${summary.orderNr || "summary"}.csv`
+    a.download = `${
+      summary.orderNr ? `order-${summary.orderNr}` : "basket-summary"
+    }.csv`
     document.body.appendChild(a)
     a.click()
     a.remove()
     setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
 
-  // Standalone styles for the print window (self-contained — the host/panel CSS
-  // isn't available there).
   const PRINT_CSS = `
     * { box-sizing: border-box; }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: #1a1a1a; margin: 24px; }
@@ -241,7 +390,6 @@
     tfoot td { font-weight: 700; border-top: 2px solid #ccc; border-bottom: none; }
   `
 
-  // Open a clean printable window with the same tables and trigger the print dialog.
   const printSummary = (summary) => {
     const w = window.open("", "_blank", "width=820,height=900")
     if (!w) {
@@ -249,13 +397,13 @@
       return
     }
     const doc = w.document
-    doc.title = `Order ${summary.orderNr}`
+    doc.title = summary.title
     const style = doc.createElement("style")
     style.textContent = PRINT_CSS
     doc.head.appendChild(style)
 
     const h1 = doc.createElement("h1")
-    h1.textContent = `Order ${summary.orderNr}${
+    h1.textContent = `${summary.title}${
       summary.reference ? ` (${summary.reference})` : ""
     }`
     doc.body.appendChild(h1)
@@ -267,8 +415,12 @@
     for (const s of SECTIONS) {
       const b = summary.buckets[s.key]
       if (!b.total) continue
-      // buildSectionTable builds nodes in the host document; import them here.
-      doc.body.appendChild(doc.importNode(buildSectionTable(s.title, b, s.nameLabel), true))
+      doc.body.appendChild(
+        doc.importNode(
+          buildSectionTable(s.title, b, s.nameLabel, null, s.simple),
+          true
+        )
+      )
     }
 
     w.focus()
@@ -278,7 +430,6 @@
   // ---------------------------------------------------------------------------
   // Update check + sharing
   // ---------------------------------------------------------------------------
-  // Numeric semver-ish compare: returns >0 if a is newer than b.
   const cmpVersion = (a, b) => {
     const pa = String(a).split(".").map(Number)
     const pb = String(b).split(".").map(Number)
@@ -292,7 +443,6 @@
   const updateAvailable = () =>
     !!latestVersion && cmpVersion(latestVersion, CURRENT_VERSION) > 0
 
-  // Check GitHub for a newer version at most once a day; cache the result.
   const maybeCheckUpdate = async () => {
     try {
       const { nkLastCheck = 0, nkLatestVersion = null } =
@@ -310,7 +460,6 @@
         }
       }
       log("update check: current", CURRENT_VERSION, "latest", latestVersion)
-      // If the open panel doesn't show the banner yet, add it now.
       if (updateAvailable()) {
         const body = document.querySelector(`#${PANEL_ID} .nk-body`)
         if (body && !body.querySelector(".nk-update")) {
@@ -335,8 +484,6 @@
     return bar
   }
 
-  // Build the Feather "share-2" icon as DOM nodes (avoids innerHTML so it works
-  // even under the host page's Trusted Types CSP). Inherits color via currentColor.
   const SVG_NS = "http://www.w3.org/2000/svg"
   const svgEl = (tag, attrs) => {
     const n = document.createElementNS(SVG_NS, tag)
@@ -358,19 +505,25 @@
     svg.appendChild(svgEl("circle", { cx: "18", cy: "5", r: "3" }))
     svg.appendChild(svgEl("circle", { cx: "6", cy: "12", r: "3" }))
     svg.appendChild(svgEl("circle", { cx: "18", cy: "19", r: "3" }))
-    svg.appendChild(svgEl("line", { x1: "8.59", y1: "13.51", x2: "15.42", y2: "17.49" }))
-    svg.appendChild(svgEl("line", { x1: "15.41", y1: "6.51", x2: "8.59", y2: "10.49" }))
+    svg.appendChild(
+      svgEl("line", { x1: "8.59", y1: "13.51", x2: "15.42", y2: "17.49" })
+    )
+    svg.appendChild(
+      svgEl("line", { x1: "15.41", y1: "6.51", x2: "8.59", y2: "10.49" })
+    )
     return svg
   }
 
-  // Share the extension's GitHub link (native share sheet, else copy to clipboard).
   const shareExtension = async (btn) => {
     if (navigator.share) {
       try {
-        await navigator.share({ title: "Nieuwkoop Order Summary", url: REPO_URL })
+        await navigator.share({
+          title: "Nieuwkoop Order Summary",
+          url: REPO_URL,
+        })
         return
       } catch (e) {
-        if (e && e.name === "AbortError") return // user dismissed the share sheet
+        if (e && e.name === "AbortError") return
       }
     }
     try {
@@ -394,19 +547,28 @@
     const panel = el("div")
     panel.id = PANEL_ID
     if (collapsed) panel.classList.add("nk-collapsed")
+    if (summary.isCart) panel.dataset.nkCart = "1"
 
     const header = el("div", "nk-header")
     const title = el("div", "nk-title")
-    title.appendChild(el("span", "nk-order-nr", `Order ${summary.orderNr}`))
+    title.appendChild(el("span", "nk-order-nr", summary.title))
     if (summary.reference)
       title.appendChild(el("span", "nk-ref", summary.reference))
     header.appendChild(title)
+
+    // Plant total stays visible in the header while the panel is collapsed.
+    const collapsedTotal = el(
+      "div",
+      "nk-collapsed-total",
+      `${summary.buckets.plant.total} plants`
+    )
+    header.appendChild(collapsedTotal)
 
     const controls = el("div", "nk-controls")
 
     // Export/print dropdown.
     const menuWrap = el("div", "nk-menu-wrap")
-    const menuBtn = el("button", "nk-btn", "Export ▾")
+    const menuBtn = el("button", "nk-btn", "Export")
     menuBtn.title = "Export or print this summary"
     const menu = el("div", "nk-menu")
     const closeMenu = () => {
@@ -452,8 +614,13 @@
       collapseBtn.textContent = isCol ? "+" : "–"
     })
     const closeBtn = el("button", "nk-btn", "×")
-    closeBtn.title = "Close (also closes the order details)"
-    closeBtn.addEventListener("click", closePanel)
+    closeBtn.title = summary.isCart
+      ? "Close"
+      : "Close (also closes the order details)"
+    closeBtn.addEventListener(
+      "click",
+      summary.isCart ? closeCartPanel : closePanel
+    )
     controls.appendChild(menuWrap)
     controls.appendChild(shareBtn)
     controls.appendChild(collapseBtn)
@@ -465,6 +632,10 @@
 
     // Show the update banner above everything if a newer version is known.
     if (updateAvailable()) body.appendChild(buildUpdateBanner())
+
+    // Backorder warning sits above the plant summary.
+    if (summary.backorders && summary.backorders.length)
+      body.appendChild(buildBackorderSection(summary.backorders))
 
     const strip = el("div", "nk-strip")
     const plants = summary.buckets.plant
@@ -501,7 +672,13 @@
       const b = summary.buckets[s.key]
       if (!b.total) continue
       body.appendChild(
-        buildSectionTable(s.title, b, s.nameLabel, isFirstSection ? sortSelect : null)
+        buildSectionTable(
+          s.title,
+          b,
+          s.nameLabel,
+          isFirstSection ? sortSelect : null,
+          s.simple
+        )
       )
       isFirstSection = false
     }
@@ -511,19 +688,24 @@
     hideHostBackdrop()
   }
 
-  const renderMessage = (message) => {
+  const renderMessage = (message, opts = {}) => {
     const existing = document.getElementById(PANEL_ID)
     if (existing) existing.remove()
     const panel = el("div")
     panel.id = PANEL_ID
     const header = el("div", "nk-header")
     const title = el("div", "nk-title")
-    title.appendChild(el("span", "nk-order-nr", "Order summary"))
+    title.appendChild(el("span", "nk-order-nr", opts.title || "Order summary"))
     header.appendChild(title)
     const controls = el("div", "nk-controls")
     const closeBtn = el("button", "nk-btn", "×")
-    closeBtn.title = "Close (also closes the order details)"
-    closeBtn.addEventListener("click", closePanel)
+    closeBtn.title = opts.isCart
+      ? "Close"
+      : "Close (also closes the order details)"
+    closeBtn.addEventListener(
+      "click",
+      opts.isCart ? closeCartPanel : closePanel
+    )
     controls.appendChild(closeBtn)
     header.appendChild(controls)
     panel.appendChild(header)
@@ -544,7 +726,9 @@
       if (raw.charAt(0) === "{") {
         try {
           const obj = JSON.parse(raw)
-          return obj.token || obj.access_token || obj.jwt || obj.accessToken || null
+          return (
+            obj.token || obj.access_token || obj.jwt || obj.accessToken || null
+          )
         } catch {
           return null
         }
@@ -587,7 +771,13 @@
       }
       currentSummary = summarize(order)
       fetchedOrderNr = orderNr
-      log("fetched order", currentSummary.orderNr, "—", currentSummary.lineCount, "lines")
+      log(
+        "fetched order",
+        currentSummary.orderNr,
+        "—",
+        currentSummary.lineCount,
+        "lines"
+      )
       if (document.getElementById(PANEL_ID)) render(currentSummary)
       return true
     } catch (e) {
@@ -597,9 +787,96 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Cart (basket page) — fed by inject.js capturing the site's own cart fetches
+  // ---------------------------------------------------------------------------
+  // Localized basket path slugs, matched on the final path segment.
+  const BASKET_SLUGS = new Set([
+    "basket", // en
+    "einkaufswagen", // de
+    "winkelmand", // nl
+    "panier-d-achat", // fr
+  ])
+
+  let cartSummary = null
+  let cartDismissed = false
+
+  const isBasketPage = () => {
+    const segs = location.pathname.split("/").filter(Boolean)
+    const last = (segs[segs.length - 1] || "").toLowerCase()
+    return BASKET_SLUGS.has(last)
+  }
+
+  const showCartPanel = () => {
+    if (cartSummary) render(cartSummary)
+    else renderMessage("Loading basket…", { title: "Basket", isCart: true })
+  }
+
+  // The cart panel is standalone — closing just removes it (no host modal).
+  const closeCartPanel = () => {
+    cartDismissed = true
+    const p = document.getElementById(PANEL_ID)
+    if (p) p.remove()
+  }
+
+  const toggleCartPanel = () => {
+    if (document.getElementById(PANEL_ID)) {
+      closeCartPanel()
+      return
+    }
+    maybeCheckUpdate() // fire-and-forget; throttled to once a day
+    cartDismissed = false
+    showCartPanel()
+  }
+
+  // Receive cart payloads forwarded by the MAIN-world interceptor.
+  window.addEventListener("message", (event) => {
+    if (event.source !== window) return
+    const data = event.data
+    if (!data || data.__nkCart !== true || !data.payload) return
+    cartSummary = summarizeCart(data.payload)
+    log(
+      "cart captured —",
+      cartSummary.lineCount,
+      "line items; basket page:",
+      isBasketPage(),
+      "dismissed:",
+      cartDismissed
+    )
+    // Auto-show / live-refresh on the basket page unless the user closed it.
+    if (isBasketPage() && !cartDismissed) render(cartSummary)
+  })
+  // Recover a cart captured before this listener was attached.
+  log("requesting cart replay from interceptor")
+  window.postMessage({ __nkCartRequest: true }, location.origin)
+
+  // The basket is an SPA route: show the panel on entry, drop it on exit.
+  let lastHref = location.href
+  const onUrlChange = () => {
+    if (isBasketPage()) {
+      cartDismissed = false
+      if (cartSummary && !document.getElementById(PANEL_ID)) render(cartSummary)
+    } else {
+      const p = document.getElementById(PANEL_ID)
+      if (p && p.dataset.nkCart) p.remove()
+    }
+  }
+  window.addEventListener("popstate", onUrlChange)
+  // pushState happens in the page's world, so poll rather than patch history.
+  setInterval(() => {
+    if (location.href === lastHref) return
+    lastHref = location.href
+    onUrlChange()
+  }, 1000)
+
+  // ---------------------------------------------------------------------------
   // Toggle (toolbar icon) + initial prefetch
   // ---------------------------------------------------------------------------
   const togglePanel = async () => {
+    if (isBasketPage()) {
+      log("toggle: basket page")
+      toggleCartPanel()
+      return
+    }
     if (document.getElementById(PANEL_ID)) {
       log("toggle: closing panel + host modal")
       closePanel()

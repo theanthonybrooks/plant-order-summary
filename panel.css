@@ -61,6 +61,22 @@
   flex: 0 0 auto;
 }
 
+/* Plant total shown in the header only while the panel is collapsed. */
+#nk-order-panel .nk-collapsed-total {
+  display: none;
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.18);
+  padding: 3px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+#nk-order-panel.nk-collapsed .nk-collapsed-total {
+  display: inline-block;
+}
+
 #nk-order-panel .nk-btn {
   appearance: none;
   border: none;
@@ -163,6 +179,58 @@
   text-decoration: underline;
 }
 
+#nk-order-panel .nk-backorder {
+  margin-bottom: 12px;
+  border: 1px solid #e6a23c;
+  border-radius: 6px;
+  background: #fff7e6;
+  overflow: hidden;
+}
+
+#nk-order-panel .nk-backorder-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  appearance: none;
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 7px 10px;
+  font: inherit;
+  color: #8a5a00;
+  text-align: left;
+}
+
+#nk-order-panel .nk-backorder-title {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+#nk-order-panel .nk-backorder-toggle {
+  font-size: 16px;
+  flex: 0 0 auto;
+}
+
+#nk-order-panel .nk-backorder-body {
+  display: none;
+  padding: 0 10px 8px;
+}
+
+#nk-order-panel .nk-backorder.nk-open .nk-backorder-body {
+  display: block;
+}
+
+#nk-order-panel .nk-backorder .nk-table th {
+  color: #8a5a00;
+  border-bottom-color: #e6a23c;
+}
+
+#nk-order-panel .nk-backorder .nk-table td {
+  border-bottom-color: #f3e2bd;
+}
+
 #nk-order-panel .nk-strip {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -191,7 +259,7 @@
 }
 
 #nk-order-panel .nk-section {
-  margin-bottom: 14px;
+  margin-bottom: 28px;
 }
 
 #nk-order-panel .nk-section-head {
