@@ -51,8 +51,8 @@ icons/            toolbar icons
 3. In the panel you can:
    - **Sort** the tables by number (default) or by name, using the dropdown on
      the first section's title row.
-   - **Export ▾ → Export CSV** to download the summary as a spreadsheet.
-   - **Export ▾ → Print** to open a clean printable view.
+   - **Export → Export CSV** to download the summary as a spreadsheet.
+   - **Export → Print** to open a clean printable view.
      - Note: Print opens a popup window — allow popups for the site if your
        browser blocks it.
    - **Share** (the icon next to Export) to share/copy the link to this

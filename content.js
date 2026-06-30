@@ -133,6 +133,44 @@
     }
   }
 
+  // Resolve when a short line is expected to be coverable.
+  //   tier 1: MRP custom field ("YYYY-MM-DD|projectedQty" snapshots) → exact date
+  //            covering `need` (quantity-aware).
+  //   tier 2: restockableInDays → approximate timing, quantity NOT confirmed.
+  //   tier 3: nothing → unknown.
+  // `key` is a stable string for grouping; `sort` orders date < days < unknown.
+  const resolveRestock = (variant, need) => {
+    const av = (variant && variant.availability) || {}
+    const fields = (av.custom && av.custom.customFieldsRaw) || []
+    const mrp = fields.find((f) => f && f.name === "MRP")
+    const rows = (mrp && Array.isArray(mrp.value) ? mrp.value : [])
+      .map((s) => {
+        const [date, qty] = String(s).split("|")
+        return { date, qty: Number(qty) || 0 }
+      })
+      .filter((r) => r.date)
+      .sort((a, b) => a.date.localeCompare(b.date))
+    for (const r of rows)
+      if (r.qty >= need)
+        return {
+          type: "date",
+          date: r.date,
+          key: `d:${r.date}`,
+          sort: [0, r.date],
+        }
+
+    const days = Number((av.noChannel && av.noChannel.restockableInDays) || 0)
+    if (days > 0)
+      return {
+        type: "days",
+        days,
+        key: `n:${days}`,
+        sort: [1, String(days).padStart(6, "0")],
+      }
+
+    return { type: "unknown", key: "u", sort: [2, ""] }
+  }
+
   const collectBackorders = (items) => {
     const groups = {}
     for (const line of items) {
@@ -143,22 +181,64 @@
       if (!nc) continue
       const qty = Number(line.quantity) || 0
       const avail = Number(nc.availableQuantity) || 0
-      const days = Number(nc.restockableInDays) || 0
-      if (avail >= qty || days <= 0) continue
+      if (avail >= qty) continue
       const name = normalizeName(line.name)
-      const key = `${name}|${days}`
+      const restock = resolveRestock(line.variant, qty)
+      const key = `${name}|${restock.key}`
       let g = groups[key]
-      if (!g) g = groups[key] = { name, short: 0, days, expected: null }
+      if (!g) g = groups[key] = { name, short: 0, restock }
       g.short += qty - avail
-      if (
-        nc.expectedDelivery &&
-        (!g.expected || nc.expectedDelivery < g.expected)
-      )
-        g.expected = nc.expectedDelivery
     }
-    return Object.values(groups).sort(
-      (a, b) => a.days - b.days || a.name.localeCompare(b.name)
-    )
+    return Object.values(groups).sort((a, b) => {
+      const [at, av] = a.restock.sort
+      const [bt, bv] = b.restock.sort
+      return at - bt || av.localeCompare(bv) || a.name.localeCompare(b.name)
+    })
+  }
+
+  // Read the GroupID custom field a line item carries (which assembly it's in).
+  const lineGroupId = (line) => {
+    const fields = (line.custom && line.custom.customFieldsRaw) || []
+    const f = fields.find((x) => x && x.name === "GroupID")
+    return f ? f.value : null
+  }
+
+  // Flag assemblies whose plant quantity exceeds their pot quantity — usually the
+  // site glitch where multiple plants land in a single pot. Every assembly is
+  // expected to hold at least one plant, pot, and substrate.
+  const collectAssemblyWarnings = (items, cartFields) => {
+    // Map GroupID -> human label from the cart's `assemblyGroups` field
+    // (entries look like "<GroupID> | <label> | a | b | c").
+    const labels = {}
+    const ag = (cartFields || []).find((f) => f && f.name === "assemblyGroups")
+    if (ag && Array.isArray(ag.value))
+      for (const entry of ag.value) {
+        const parts = String(entry)
+          .split("|")
+          .map((s) => s.trim())
+        if (parts[0]) labels[parts[0]] = parts[1] || "Assembly"
+      }
+
+    const groups = {}
+    for (const line of items) {
+      const gid = lineGroupId(line)
+      if (!gid) continue
+      const g = groups[gid] || (groups[gid] = { plantQty: 0, potQty: 0 })
+      const qty = Number(line.quantity) || 0
+      const kind = classify(line)
+      if (kind === "plant") g.plantQty += qty
+      else if (kind === "pot") g.potQty += qty
+    }
+
+    return Object.entries(groups)
+      .filter(([, g]) => g.plantQty > g.potQty)
+      .map(([gid, g]) => ({
+        groupId: gid,
+        label: labels[gid] || "Assembly",
+        plantQty: g.plantQty,
+        potQty: g.potQty,
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label))
   }
 
   const summarizeCart = (cart) => {
@@ -191,6 +271,10 @@
           : items.length,
       buckets,
       backorders: collectBackorders(items),
+      assemblyWarnings: collectAssemblyWarnings(
+        items,
+        (cart.custom && cart.custom.customFieldsRaw) || []
+      ),
     }
   }
 
@@ -205,7 +289,6 @@
     { key: "other", title: "Other", nameLabel: "Name" },
   ]
 
-  // Row comparators selectable from the panel's sort dropdown.
   const SORTERS = {
     number: (a, b) => b.total - a.total,
     name: (a, b) => a.name.localeCompare(b.name),
@@ -235,8 +318,6 @@
     closeHostModal()
   }
 
-  // `simple` sections (e.g. Accessories) show only Name + Total — no
-  // Prepotted/Regular split.
   const buildSectionTable = (title, bucket, nameLabel, controlEl, simple) => {
     const wrap = el("div", "nk-section")
     const head = el("div", "nk-section-head")
@@ -285,6 +366,53 @@
     return wrap
   }
 
+  const fmtDate = (iso) => {
+    const d = new Date(`${iso}T00:00:00`)
+    if (isNaN(d.getTime())) return iso
+    return d.toLocaleDateString("en-GB", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    })
+  }
+
+  const restockLabel = (r) =>
+    r.type === "date"
+      ? fmtDate(r.date)
+      : r.type === "days"
+        ? `~${r.days} day${r.days === 1 ? "" : "s"}`
+        : "Unknown"
+
+  const buildAssemblyWarning = (list) => {
+    const wrap = el("div", "nk-assembly")
+    for (const w of list) {
+      const item = el("div", "nk-assembly-item")
+      const text = el("span", "nk-assembly-text")
+      text.appendChild(el("strong", null, w.label))
+      text.appendChild(
+        document.createTextNode(
+          ` has ${w.plantQty} plant${w.plantQty === 1 ? "" : "s"} but only ` +
+            `${w.potQty} pot${w.potQty === 1 ? "" : "s"}.`
+        )
+      )
+      const dismiss = el("button", "nk-assembly-dismiss", "×")
+      dismiss.title = "Dismiss"
+      dismiss.setAttribute("aria-label", "Dismiss warning")
+      dismiss.addEventListener("click", () => {
+        item.remove()
+        if (!wrap.querySelector(".nk-assembly-item")) {
+          const panel = document.getElementById(PANEL_ID)
+          if (panel) panel.classList.remove("nk-warn-assembly")
+        }
+      })
+      item.appendChild(el("span", "nk-assembly-icon", "⚠"))
+      item.appendChild(text)
+      item.appendChild(dismiss)
+      wrap.appendChild(item)
+    }
+    return wrap
+  }
+
   const buildBackorderSection = (list) => {
     const wrap = el("div", "nk-backorder")
     if (backorderOpen) wrap.classList.add("nk-open")
@@ -324,9 +452,7 @@
       const tr = el("tr")
       tr.appendChild(el("td", "nk-col-name", g.name))
       tr.appendChild(el("td", "nk-col-num", String(g.short)))
-      tr.appendChild(
-        el("td", "nk-col-num", `${g.days} day${g.days === 1 ? "" : "s"}`)
-      )
+      tr.appendChild(el("td", "nk-col-num", restockLabel(g.restock)))
       tbody.appendChild(tr)
     }
     table.appendChild(tbody)
@@ -335,7 +461,6 @@
     return wrap
   }
 
-  // Quote a CSV cell only when it contains a comma, quote, or newline.
   const csvCell = (value) => {
     const s = String(value ?? "")
     return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
@@ -547,6 +672,11 @@
     const panel = el("div")
     panel.id = PANEL_ID
     if (collapsed) panel.classList.add("nk-collapsed")
+    // Status classes tint the header while the panel is collapsed (red wins).
+    if (summary.assemblyWarnings && summary.assemblyWarnings.length)
+      panel.classList.add("nk-warn-assembly")
+    if (summary.backorders && summary.backorders.length)
+      panel.classList.add("nk-warn-backorder")
     if (summary.isCart) panel.dataset.nkCart = "1"
 
     const header = el("div", "nk-header")
@@ -632,6 +762,10 @@
 
     // Show the update banner above everything if a newer version is known.
     if (updateAvailable()) body.appendChild(buildUpdateBanner())
+
+    // Assembly plant/pot ratio warnings sit at the top of the body.
+    if (summary.assemblyWarnings && summary.assemblyWarnings.length)
+      body.appendChild(buildAssemblyWarning(summary.assemblyWarnings))
 
     // Backorder warning sits above the plant summary.
     if (summary.backorders && summary.backorders.length)

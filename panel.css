@@ -1,3 +1,17 @@
+:root {
+  --warning-bg: #fff7e6;
+  --warning-border: #e6a23c;
+  --warning-panel: rgb(217 147 43);
+  --warning-text: #7a5b00;
+  --warning-icon: #8a5a00;
+  --warning-icon-hover: #5c3d00;
+  --error-bg-light: rgb(255 238 238);
+  --error-border-light: rgb(208, 157, 157);
+  --error-bg: hsl(8, 63%, 53%);
+  --error-border: rgb(186 23 23);
+  --error-text: hsl(8, 85%, 30%);
+}
+
 #nk-order-panel {
   position: fixed;
   top: 16px;
@@ -34,6 +48,16 @@
   background: #2f7d4f;
   color: #fff;
   flex: 0 0 auto;
+}
+
+/* Collapsed-panel status tint: amber when an assembly ratio is off, red when
+items are backordered. The backorder rule is last so red wins when both. */
+#nk-order-panel.nk-collapsed.nk-warn-assembly .nk-header {
+  background: var(--warning-panel);
+}
+
+#nk-order-panel.nk-collapsed.nk-warn-backorder .nk-header {
+  background: var(--error-bg);
 }
 
 #nk-order-panel .nk-title {
@@ -161,11 +185,11 @@
   gap: 8px;
   margin-bottom: 12px;
   padding: 7px 10px;
-  background: #fff7e6;
-  border: 1px solid #f0c36d;
+  background: var(--warning-bg);
+  border: 1px solid var(--warning-border);
   border-radius: 6px;
   font-size: 12px;
-  color: #7a5b00;
+  color: var(--warning-text);
 }
 
 #nk-order-panel .nk-update-link {
@@ -179,11 +203,55 @@
   text-decoration: underline;
 }
 
+#nk-order-panel .nk-assembly {
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+#nk-order-panel .nk-assembly-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 10px;
+  background: var(--warning-bg);
+  border: 1px solid var(--warning-border);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--warning-text);
+}
+
+#nk-order-panel .nk-assembly-icon {
+  flex: 0 0 auto;
+  line-height: 1.4;
+}
+
+#nk-order-panel .nk-assembly-text {
+  flex: 1 1 auto;
+}
+
+#nk-order-panel .nk-assembly-dismiss {
+  appearance: none;
+  border: none;
+  background: none;
+  color: var(--warning-icon);
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 2px;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+#nk-order-panel .nk-assembly-dismiss:hover {
+  color: var(--warning-icon-hover);
+}
+
 #nk-order-panel .nk-backorder {
   margin-bottom: 12px;
-  border: 1px solid #e6a23c;
+  border: 1px solid var(--error-border);
   border-radius: 6px;
-  background: #fff7e6;
+  background: var(--error-bg-light);
   overflow: hidden;
 }
 
@@ -199,7 +267,7 @@
   cursor: pointer;
   padding: 7px 10px;
   font: inherit;
-  color: #8a5a00;
+  color: var(--error-text);
   text-align: left;
 }
 
@@ -223,12 +291,12 @@
 }
 
 #nk-order-panel .nk-backorder .nk-table th {
-  color: #8a5a00;
-  border-bottom-color: #e6a23c;
+  color: var(--error-text);
+  border-bottom-color: var(--error-border);
 }
 
 #nk-order-panel .nk-backorder .nk-table td {
-  border-bottom-color: #f3e2bd;
+  border-bottom-color: var(--error-border-light);
 }
 
 #nk-order-panel .nk-strip {
