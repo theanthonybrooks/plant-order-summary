@@ -1,3 +1,8 @@
+//TODO: potential improvements:
+// [] disable the finalize button when there's an undismissed assembly warning (or a backorder warning)
+// [] assembly breakdowns
+// [] plant breakdowns to show different sizes if they exist
+
 ;(() => {
   "use strict"
 
