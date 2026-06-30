@@ -1,24 +1,30 @@
 # Nieuwkoop Order Summary
 
-A Chrome extension that adds a floating summary panel to Nieuwkoop order pages —
-plant / pot / soil counts grouped by species, split into **Prepotted** vs
-**Regular**, with sorting, CSV export, and print.
+A Chrome extension that adds a floating summary panel to:
+
+1. **Nieuwkoop order pages**
+2. **Nieuwkoop checkout basket pages**
+
+To give you a quick overview of the plant, pot, soil, and accessory counts.
+Plants, pots, and soil are split into **Prepotted** vs **Regular**, whereas
+accessories only count the number. Additionally, you have optional sorting by
+name/total, backorder alerts at checkout, CSV export, and print.
 
 ## Installing (sideloading) in Chrome
 
 This extension isn't on the Chrome Web Store, so you load it as an "unpacked"
 extension. This also works in any Chromium-based browser (Edge, Brave, Opera).
 
-1. **Get the files.** Download/clone this project so you have the project folder
-   on your computer (the folder containing `manifest.json`). Keep all the files
-   together in that folder.
+1. **Get the files.** Download this zip file using the green <> Code button.
+   Once you have the zip file, extract it to a folder on your computer. Keep all
+   the files together in that folder.
 2. **Open the Extensions page.** Go to `chrome://extensions` (type it into the
    address bar and press Enter). On Edge it's `edge://extensions`.
 3. **Turn on Developer mode.** Toggle the **Developer mode** switch in the
    top-right corner.
-4. **Load it.** Click **Load unpacked**, then select this project folder (the one
-   containing `manifest.json`). The "Nieuwkoop Order Summary" card should appear
-   — it may take a moment to show up.
+4. **Load it.** Click **Load unpacked**, then select this project folder (the
+   one containing `manifest.json`). The "Nieuwkoop Order Summary" card should
+   appear — it may take a moment to show up.
 5. **Pin it (optional).** Click the puzzle-piece icon in the toolbar and pin
    "Nieuwkoop Order Summary" so its icon is always visible.
 
@@ -75,11 +81,12 @@ Updating itself is manual (an unpacked extension can't replace itself):
 
 ## What it can access
 
-The extension runs only on `www.nieuwkoop-europe.com` and reads order data from
-`backend.nieuwkoop-europe.com` using the session token the site already stores in
-your browser. It doesn't send your data anywhere else. For update checks it makes
-a plain read request to the project's public `manifest.json` on GitHub to compare
-version numbers — no account or order data is included.
+The extension runs only on `www.nieuwkoop-europe.com` and reads order and cart
+data from `backend.nieuwkoop-europe.com` using the session token the site
+already stores in your browser. It doesn't send your data anywhere else. For
+update checks it makes a plain read request to the project's public
+`manifest.json` on GitHub to compare version numbers — no account or order data
+is included.
 
 It is **read-only**: it only reads order data to display, export, or print a
 summary. It cannot and does not act on your behalf — it never creates, edits,
