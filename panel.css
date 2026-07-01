@@ -48,6 +48,49 @@
   background: #2f7d4f;
   color: #fff;
   flex: 0 0 auto;
+  cursor: grab;
+}
+
+#nk-order-panel.nk-dragging .nk-header {
+  cursor: grabbing;
+}
+
+/* When collapsed the whole bar acts as an expand target. */
+#nk-order-panel.nk-collapsed .nk-header {
+  cursor: pointer;
+}
+
+/* Docked panels are pinned by CSS, so the header isn't a drag handle. */
+#nk-order-panel.nk-docked .nk-header {
+  cursor: default;
+}
+
+/* Docked: full-height, flush to a screen edge (page content is shifted via a
+   margin on <html> set from JS). */
+#nk-order-panel.nk-docked {
+  top: 0;
+  bottom: 0;
+  height: 100vh;
+  max-height: none;
+  border-radius: 0;
+}
+
+/* Collapsed while docked: shrink to just the bar instead of a tall empty column. */
+#nk-order-panel.nk-docked.nk-collapsed {
+  bottom: auto;
+  height: auto;
+}
+
+#nk-order-panel.nk-dock-left {
+  left: 0;
+  right: auto;
+  border-left: none;
+}
+
+#nk-order-panel.nk-dock-right {
+  right: 0;
+  left: auto;
+  border-right: none;
 }
 
 /* Collapsed-panel status tint: amber when an assembly ratio is off, red when
@@ -166,6 +209,11 @@ items are backordered. The backorder rule is last so red wins when both. */
 
 #nk-order-panel .nk-menu-item:hover {
   background: #f2f6f3;
+}
+
+#nk-order-panel .nk-menu-item.nk-active {
+  font-weight: 700;
+  color: #2f7d4f;
 }
 
 #nk-order-panel .nk-body {

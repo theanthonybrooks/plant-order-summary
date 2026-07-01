@@ -15,6 +15,33 @@
   let sortMode = "number"
   let backorderOpen = true // expanded by default so the warning is visible
 
+  // Panel layout (float vs docked, position) persisted across reloads.
+  //   { mode: "float" | "dock", side: "left" | "right", x, y }
+  const LAYOUT_KEY = "nkPanelLayout"
+  const loadLayout = () => {
+    try {
+      return JSON.parse(localStorage.getItem(LAYOUT_KEY)) || {}
+    } catch {
+      return {}
+    }
+  }
+  const saveLayout = (patch) => {
+    const next = { ...loadLayout(), ...patch }
+    try {
+      localStorage.setItem(LAYOUT_KEY, JSON.stringify(next))
+    } catch {
+      /* storage unavailable — layout just won't persist */
+    }
+    return next
+  }
+  const clearDockMargin = () => {
+    const html = document.documentElement
+    html.style.marginLeft = ""
+    html.style.marginRight = ""
+    // Restore the body width we override while docked (see applyLayout).
+    document.body.style.width = ""
+  }
+
   const REPO = "theanthonybrooks/plant-order-summary"
   const REPO_URL = `https://github.com/${REPO}`
   const MANIFEST_URL = `https://raw.githubusercontent.com/${REPO}/main/manifest.json`
@@ -340,6 +367,7 @@
   const closePanel = () => {
     const p = document.getElementById(PANEL_ID)
     if (p) p.remove()
+    clearDockMargin()
     closeHostModal()
   }
 
@@ -732,6 +760,89 @@
     }
   }
 
+  // Position/dock the panel to match the saved layout, and shift the host page
+  // when docked so the summary sits beside the content instead of over it.
+  const applyLayout = (panel) => {
+    const layout = loadLayout()
+    const mode = layout.mode === "dock" ? "dock" : "float"
+
+    if (mode === "float") {
+      panel.classList.remove("nk-docked", "nk-dock-left", "nk-dock-right")
+      clearDockMargin()
+      if (typeof layout.x === "number" && typeof layout.y === "number") {
+        const maxX = Math.max(0, window.innerWidth - panel.offsetWidth)
+        const maxY = Math.max(0, window.innerHeight - 40)
+        panel.style.left = `${Math.min(Math.max(0, layout.x), maxX)}px`
+        panel.style.top = `${Math.min(Math.max(0, layout.y), maxY)}px`
+        panel.style.right = "auto"
+      }
+      return
+    }
+
+    const side = layout.side === "left" ? "left" : "right"
+    panel.style.left = ""
+    panel.style.top = ""
+    panel.style.right = ""
+    panel.classList.add("nk-docked")
+    panel.classList.toggle("nk-dock-left", side === "left")
+    panel.classList.toggle("nk-dock-right", side === "right")
+    clearDockMargin()
+    // While collapsed the docked bar is short — release the margin so the page
+    // reclaims the space; the bar just overlays the edge until re-expanded.
+    if (!panel.classList.contains("nk-collapsed")) {
+      document.documentElement.style[
+        side === "left" ? "marginLeft" : "marginRight"
+      ] = `${panel.offsetWidth}px`
+      // The host body is `width: 100vw`, which ignores the margin above; force
+      // it to fill the (now narrower) content box so the page actually shifts.
+      document.body.style.width = "100%"
+    }
+  }
+
+  // Drag the header to move the panel (float mode only). Shares `state.didDrag`
+  // with the click-to-expand handler so a drag doesn't also expand the panel.
+  const enableDrag = (panel, header, state) => {
+    header.addEventListener("mousedown", (e) => {
+      if (e.button !== 0) return
+      if (e.target.closest(".nk-controls")) return
+      if (panel.classList.contains("nk-docked")) return
+      const rect = panel.getBoundingClientRect()
+      const startX = e.clientX
+      const startY = e.clientY
+      state.didDrag = false
+
+      const onMove = (ev) => {
+        const dx = ev.clientX - startX
+        const dy = ev.clientY - startY
+        if (!state.didDrag && Math.abs(dx) + Math.abs(dy) < 4) return
+        state.didDrag = true
+        panel.classList.add("nk-dragging")
+        const maxX = Math.max(0, window.innerWidth - panel.offsetWidth)
+        const maxY = Math.max(0, window.innerHeight - panel.offsetHeight)
+        const x = Math.min(Math.max(0, rect.left + dx), maxX)
+        const y = Math.min(Math.max(0, rect.top + dy), maxY)
+        panel.style.left = `${x}px`
+        panel.style.top = `${y}px`
+        panel.style.right = "auto"
+      }
+      const onUp = () => {
+        document.removeEventListener("mousemove", onMove)
+        document.removeEventListener("mouseup", onUp)
+        panel.classList.remove("nk-dragging")
+        if (state.didDrag) {
+          const rect2 = panel.getBoundingClientRect()
+          saveLayout({ mode: "float", x: rect2.left, y: rect2.top })
+        }
+        // Let the trailing click read didDrag, then reset it.
+        setTimeout(() => {
+          state.didDrag = false
+        }, 0)
+      }
+      document.addEventListener("mousemove", onMove)
+      document.addEventListener("mouseup", onUp)
+    })
+  }
+
   const render = (summary) => {
     const existing = document.getElementById(PANEL_ID)
     const collapsed = existing && existing.classList.contains("nk-collapsed")
@@ -746,6 +857,8 @@
     if (summary.backorders && summary.backorders.length)
       panel.classList.add("nk-warn-backorder")
     if (summary.isCart) panel.dataset.nkCart = "1"
+
+    const dragState = { didDrag: false }
 
     const header = el("div", "nk-header")
     const title = el("div", "nk-title")
@@ -805,12 +918,88 @@
     shareBtn.appendChild(buildShareIcon())
     shareBtn.addEventListener("click", () => shareExtension(shareBtn))
 
+    // Layout dropdown (gear): float vs dock left/right, persisted.
+    const gearWrap = el("div", "nk-menu-wrap")
+    const gearBtn = el("button", "nk-btn nk-icon-btn", "⚙")
+    gearBtn.title = "Panel position"
+    gearBtn.setAttribute("aria-label", "Panel position")
+    const gearMenu = el("div", "nk-menu")
+    const closeGear = () => {
+      gearMenu.classList.remove("nk-open")
+      document.removeEventListener("click", onGearDocClick)
+    }
+    const onGearDocClick = (e) => {
+      if (!gearWrap.contains(e.target)) closeGear()
+    }
+    const gearItems = []
+    const addGearItem = (label, isActive, fn) => {
+      const item = el("button", "nk-menu-item", label)
+      if (isActive) item.classList.add("nk-active")
+      item.addEventListener("click", () => {
+        closeGear()
+        fn()
+        applyLayout(panel)
+        markActiveGear()
+      })
+      gearItems.push(item)
+      gearMenu.appendChild(item)
+    }
+    const markActiveGear = () => {
+      const layout = loadLayout()
+      const mode = layout.mode === "dock" ? "dock" : "float"
+      const side = layout.side === "left" ? "left" : "right"
+      const active = mode === "float" ? "Float" : `Dock ${side}`
+      gearItems.forEach((it) =>
+        it.classList.toggle("nk-active", it.textContent === active)
+      )
+    }
+    const current = loadLayout()
+    const curMode = current.mode === "dock" ? "dock" : "float"
+    const curSide = current.side === "left" ? "left" : "right"
+    addGearItem("Float", curMode === "float", () =>
+      saveLayout({ mode: "float" })
+    )
+    addGearItem(
+      "Dock left",
+      curMode === "dock" && curSide === "left",
+      () => saveLayout({ mode: "dock", side: "left" })
+    )
+    addGearItem(
+      "Dock right",
+      curMode === "dock" && curSide === "right",
+      () => saveLayout({ mode: "dock", side: "right" })
+    )
+    gearBtn.addEventListener("click", (e) => {
+      e.stopPropagation()
+      if (gearMenu.classList.contains("nk-open")) {
+        closeGear()
+        return
+      }
+      gearMenu.classList.add("nk-open")
+      document.addEventListener("click", onGearDocClick)
+    })
+    gearWrap.appendChild(gearBtn)
+    gearWrap.appendChild(gearMenu)
+
     const collapseBtn = el("button", "nk-btn", collapsed ? "+" : "–")
     collapseBtn.title = "Collapse / expand"
     collapseBtn.addEventListener("click", () => {
       const isCol = panel.classList.toggle("nk-collapsed")
       collapseBtn.textContent = isCol ? "+" : "–"
+      applyLayout(panel)
     })
+
+    // Click anywhere on the bar (but not on a control) to expand when collapsed.
+    // Collapsing stays exclusive to the collapse button above.
+    header.addEventListener("click", (e) => {
+      if (!panel.classList.contains("nk-collapsed")) return
+      if (dragState.didDrag) return
+      if (e.target.closest(".nk-controls")) return
+      panel.classList.remove("nk-collapsed")
+      collapseBtn.textContent = "–"
+      applyLayout(panel)
+    })
+    enableDrag(panel, header, dragState)
     const closeBtn = el("button", "nk-btn", "×")
     closeBtn.title = summary.isCart
       ? "Close"
@@ -821,6 +1010,7 @@
     )
     controls.appendChild(menuWrap)
     controls.appendChild(shareBtn)
+    controls.appendChild(gearWrap)
     controls.appendChild(collapseBtn)
     controls.appendChild(closeBtn)
     header.appendChild(controls)
@@ -887,6 +1077,7 @@
 
     panel.appendChild(body)
     document.body.appendChild(panel)
+    applyLayout(panel)
     hideHostBackdrop()
   }
 
@@ -1018,6 +1209,7 @@
     cartDismissed = true
     const p = document.getElementById(PANEL_ID)
     if (p) p.remove()
+    clearDockMargin()
   }
 
   const toggleCartPanel = () => {
