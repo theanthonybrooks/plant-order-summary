@@ -10,7 +10,21 @@ Plants, pots, and soil are split into **Prepotted** vs **Regular**, whereas
 accessories only count the number. Additionally, you have optional sorting by
 name/total, backorder alerts at checkout, CSV export, and print.
 
-## Installing (sideloading) in Chrome
+&nbsp;
+
+## Contents
+
+- [Installing in Chrome](#installing-in-chrome)
+- [Changing folder location/Reinstalling](#changing-folder-locationreinstalling)
+- [Project structure](#project-structure)
+- [Using it](#using-it)
+- [Updating](#updating)
+- [Troubleshooting](#troubleshooting)
+- [What it can access](#what-it-can-access)
+
+&nbsp;
+
+## Installing in Chrome
 
 This extension isn't on the Chrome Web Store, so you load it as an "unpacked"
 extension. This also works in any Chromium-based browser (Edge, Brave, Opera).
@@ -24,9 +38,40 @@ extension. This also works in any Chromium-based browser (Edge, Brave, Opera).
    top-right corner.
 4. **Load it.** Click **Load unpacked**, then select this project folder (the
    one containing `manifest.json`). The "Nieuwkoop Order Summary" card should
-   appear — it may take a moment to show up.
+   appear, though it may take a moment to show up.
 5. **Pin it (optional).** Click the puzzle-piece icon in the toolbar and pin
    "Nieuwkoop Order Summary" so its icon is always visible.
+6. **Refresh the Nieuwkoop webpage.** The extension requires a refresh to
+   interact with the site, and should now be active and working.
+
+&nbsp;
+
+> [!WARNING]
+> Once you have installed the extension in Chrome, you <u>cannot</u> move the
+> extension folder without removing/reinstalling the extension. It will not
+> work. Follow the instructions below to move the folder.
+
+&nbsp;
+
+## Changing folder location/Reinstalling
+
+If you have already installed the extension want to change the folder location,
+or need to reinstall for any reason, follow these steps:
+
+1. **Open the Extensions page.** Go to `chrome://extensions` (type it into the
+   address bar and press Enter). On Edge it's `edge://extensions`.
+2. **Click on _Remove Extension_ button.** This will remove the extension from
+   your browser.
+3. **Locate the newly downloaded folder or move the existing folder to where you
+   want it.** Keep all of the files together in that folder.
+4. **Reinstall the extension.** On the Extensions page, click **Load unpacked**,
+   then select this project folder (the one containing `manifest.json`).
+5. **Pin it (optional).** Click the puzzle-piece icon in the toolbar and pin
+   "Nieuwkoop Order Summary" so its icon is always visible.
+6. **Refresh the Nieuwkoop webpage.** The extension should now be active and
+   working.
+
+   &nbsp;
 
 ## Project structure
 
@@ -40,6 +85,8 @@ content.js        the panel: fetch, summarize, render, sort, export, print
 panel.css         panel styles
 icons/            toolbar icons
 ```
+
+&nbsp;
 
 ## Using it
 
@@ -58,6 +105,8 @@ icons/            toolbar icons
    - **Share** (the icon next to Export) to share/copy the link to this
      extension's GitHub page so others can install it.
 
+&nbsp;
+
 ## Updating
 
 The extension checks GitHub for a newer version about once a day. When one is
@@ -65,10 +114,12 @@ available, a banner appears at the top of the panel with a link to the repo.
 
 Updating itself is manual (an unpacked extension can't replace itself):
 
-1. Download/pull the latest files into the same folder.
+1. Download the latest files into the same folder.
 2. Go to `chrome://extensions` and click the **reload** (↻) icon on the
    extension's card.
 3. Refresh any open Nieuwkoop tabs so the latest content script loads.
+
+&nbsp;
 
 ## Troubleshooting
 
@@ -78,6 +129,8 @@ Updating itself is manual (an unpacked extension can't replace itself):
   order; the panel fetches order data using your logged-in session.
 - **Print does nothing** — your browser likely blocked the popup. Allow popups
   for `www.nieuwkoop-europe.com` and try again.
+
+&nbsp;
 
 ## What it can access
 
