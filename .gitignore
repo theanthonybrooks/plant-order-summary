@@ -1,6 +1,7 @@
 # Local sample/development order data — not part of the extension
 mockData/
 mock_data.json
+todo/
 
 # OS / editor cruft
 .DS_Store

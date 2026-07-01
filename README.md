@@ -36,9 +36,10 @@ extension. This also works in any Chromium-based browser (Edge, Brave, Opera).
    address bar and press Enter). On Edge it's `edge://extensions`.
 3. **Turn on Developer mode.** Toggle the **Developer mode** switch in the
    top-right corner.
-4. **Load it.** Click **Load unpacked**, then select this project folder (the
-   one containing `manifest.json`). The "Nieuwkoop Order Summary" card should
-   appear, though it may take a moment to show up.
+4. Click the **Load unpacked** button in the upper left corner of the browser
+   (will appear after you turn on Developer mode), then select the extension
+   folder (the one containing `manifest.json`). The "Nieuwkoop Order Summary"
+   card should appear, though it may take a moment to show up.
 5. **Pin it (optional).** Click the puzzle-piece icon in the toolbar and pin
    "Nieuwkoop Order Summary" so its icon is always visible.
 6. **Refresh the Nieuwkoop webpage.** The extension requires a refresh to
@@ -46,10 +47,9 @@ extension. This also works in any Chromium-based browser (Edge, Brave, Opera).
 
 &nbsp;
 
-> [!WARNING]
-> Once you have installed the extension in Chrome, you <u>cannot</u> move the
-> extension folder without removing/reinstalling the extension. It will not
-> work. Follow the instructions below to move the folder.
+> [!WARNING] Once you have installed the extension in Chrome, you <u>cannot</u>
+> move the extension folder without removing/reinstalling the extension. It will
+> not work. Follow the instructions below to move the folder.
 
 &nbsp;
 

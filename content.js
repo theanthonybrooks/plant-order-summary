@@ -88,7 +88,7 @@
     other: { groups: {}, total: 0, assembled: 0, notAssembled: 0 },
   })
 
-  const addToBucket = (bucket, name, qty, isAssembled) => {
+  const addToBucket = (bucket, name, qty, isAssembled, assemblyLabel) => {
     let g = bucket.groups[name]
     if (!g) {
       g = bucket.groups[name] = {
@@ -96,6 +96,7 @@
         total: 0,
         assembled: 0,
         notAssembled: 0,
+        assemblies: {},
       }
     }
     g.total += qty
@@ -107,6 +108,20 @@
       g.notAssembled += qty
       bucket.notAssembled += qty
     }
+    if (assemblyLabel) g.assemblies[assemblyLabel] = (g.assemblies[assemblyLabel] || 0) + qty
+  }
+
+  // Turn a row's `label -> qty` map into a sorted [{ label, qty }] list
+  // (natural sort so "Assembly 2" precedes "Assembly 10").
+  const finalizeRows = (bucket) => {
+    bucket.rows = Object.values(bucket.groups).map((g) => ({
+      ...g,
+      assemblies: Object.entries(g.assemblies)
+        .map(([label, qty]) => ({ label, qty }))
+        .sort((a, b) =>
+          a.label.localeCompare(b.label, undefined, { numeric: true })
+        ),
+    }))
   }
 
   const summarize = (order) => {
@@ -116,17 +131,20 @@
     const buckets = emptyBuckets()
 
     for (const line of lines) {
+      // AssemblyGroup looks like "AS:<GroupID>|Assembly 24 - Soil (Vulkastrat)".
+      const label = line.AssemblyGroup
+        ? String(line.AssemblyGroup).split("|")[1] || null
+        : null
       addToBucket(
         buckets[classify(line)],
         normalizeName(line.Description),
         Number(line.Quantity) || 0,
-        !!line.AssemblyGroup
+        !!line.AssemblyGroup,
+        label && label.trim()
       )
     }
 
-    for (const b of Object.values(buckets)) {
-      b.rows = Object.values(b.groups)
-    }
+    for (const b of Object.values(buckets)) finalizeRows(b)
 
     const orderNr = order.OrderNr || ""
     return {
@@ -208,12 +226,9 @@
     return f ? f.value : null
   }
 
-  // Flag assemblies whose plant quantity exceeds their pot quantity — usually the
-  // site glitch where multiple plants land in a single pot. Every assembly is
-  // expected to hold at least one plant, pot, and substrate.
-  const collectAssemblyWarnings = (items, cartFields) => {
-    // Map GroupID -> human label from the cart's `assemblyGroups` field
-    // (entries look like "<GroupID> | <label> | a | b | c").
+  // Map GroupID -> human label from the cart's `assemblyGroups` field
+  // (entries look like "<GroupID> | <label> | a | b | c").
+  const parseAssemblyLabels = (cartFields) => {
     const labels = {}
     const ag = (cartFields || []).find((f) => f && f.name === "assemblyGroups")
     if (ag && Array.isArray(ag.value))
@@ -223,6 +238,14 @@
           .map((s) => s.trim())
         if (parts[0]) labels[parts[0]] = parts[1] || "Assembly"
       }
+    return labels
+  }
+
+  // Flag assemblies whose plant quantity exceeds their pot quantity — usually the
+  // site glitch where multiple plants land in a single pot. Every assembly is
+  // expected to hold at least one plant, pot, and substrate.
+  const collectAssemblyWarnings = (items, cartFields) => {
+    const labels = parseAssemblyLabels(cartFields)
 
     const groups = {}
     for (const line of items) {
@@ -248,22 +271,22 @@
 
   const summarizeCart = (cart) => {
     const items = Array.isArray(cart.lineItems) ? cart.lineItems : []
+    const cartFields = (cart.custom && cart.custom.customFieldsRaw) || []
+    const labels = parseAssemblyLabels(cartFields)
     const buckets = emptyBuckets()
 
     for (const line of items) {
-      const fields = (line.custom && line.custom.customFieldsRaw) || []
-      const isAssembled = fields.some((f) => f && f.name === "GroupID")
+      const gid = lineGroupId(line)
       addToBucket(
         buckets[classify(line)],
         normalizeName(line.name),
         Number(line.quantity) || 0,
-        isAssembled
+        !!gid,
+        gid ? labels[gid] || null : null
       )
     }
 
-    for (const b of Object.values(buckets)) {
-      b.rows = Object.values(b.groups)
-    }
+    for (const b of Object.values(buckets)) finalizeRows(b)
 
     return {
       title: "Basket",
@@ -276,10 +299,7 @@
           : items.length,
       buckets,
       backorders: collectBackorders(items),
-      assemblyWarnings: collectAssemblyWarnings(
-        items,
-        (cart.custom && cart.custom.customFieldsRaw) || []
-      ),
+      assemblyWarnings: collectAssemblyWarnings(items, cartFields),
     }
   }
 
@@ -342,11 +362,54 @@
     thead.appendChild(hr)
     table.appendChild(thead)
 
+    const colCount = simple ? 2 : 4
     const rows = [...bucket.rows].sort(SORTERS[sortMode] || SORTERS.number)
     const tbody = el("tbody")
     for (const r of rows) {
-      const tr = el("tr")
-      tr.appendChild(el("td", "nk-col-name", r.name))
+      const hasAssembly = r.assemblies && r.assemblies.length > 0
+      const tr = el("tr", "nk-row")
+
+      const nameCell = el("td", "nk-col-name")
+      if (hasAssembly) {
+        tr.classList.add("nk-has-assembly")
+        const caret = el("span", "nk-row-caret", "▸")
+        nameCell.appendChild(caret)
+        nameCell.appendChild(document.createTextNode(r.name))
+
+        // Detail row listing each assembly this item belongs to, with per-assembly
+        // quantity. Hidden until the row is toggled open.
+        const detail = el("tr", "nk-row-detail")
+        const cell = el("td")
+        cell.colSpan = colCount
+        const list = el("div", "nk-assembly-list")
+        for (const a of r.assemblies) {
+          const line = el("div")
+          line.appendChild(document.createTextNode(a.label))
+          line.appendChild(el("span", "nk-qty", `×${a.qty}`))
+          list.appendChild(line)
+        }
+        cell.appendChild(list)
+        detail.appendChild(cell)
+
+        nameCell.addEventListener("click", () => {
+          const open = tr.classList.toggle("nk-open")
+          detail.classList.toggle("nk-open", open)
+          caret.textContent = open ? "▾" : "▸"
+        })
+
+        tr.appendChild(nameCell)
+        tr.appendChild(el("td", "nk-col-num", String(r.total)))
+        if (!simple) {
+          tr.appendChild(el("td", "nk-col-num", String(r.assembled)))
+          tr.appendChild(el("td", "nk-col-num", String(r.notAssembled)))
+        }
+        tbody.appendChild(tr)
+        tbody.appendChild(detail)
+        continue
+      }
+
+      nameCell.textContent = r.name
+      tr.appendChild(nameCell)
       tr.appendChild(el("td", "nk-col-num", String(r.total)))
       if (!simple) {
         tr.appendChild(el("td", "nk-col-num", String(r.assembled)))

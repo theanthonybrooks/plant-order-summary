@@ -402,3 +402,47 @@ items are backordered. The backorder rule is last so red wins when both. */
   border-top: 2px solid #d0d5dd;
   border-bottom: none;
 }
+
+/* Rows that belong to one or more assemblies expand to list them. */
+#nk-order-panel .nk-has-assembly .nk-col-name {
+  cursor: pointer;
+  user-select: none;
+}
+
+#nk-order-panel .nk-row-caret {
+  display: inline-block;
+  width: 12px;
+  color: #5b6b60;
+  font-size: 10px;
+}
+
+#nk-order-panel .nk-row-detail {
+  display: none;
+}
+
+#nk-order-panel .nk-row-detail.nk-open {
+  display: table-row;
+}
+
+#nk-order-panel .nk-row-detail td {
+  padding-top: 0;
+  border-bottom: 1px solid #eef1ef;
+}
+
+#nk-order-panel .nk-assembly-list {
+  padding: 2px 0 4px 17px;
+  font-size: 13px;
+  color: #6a7a6f;
+}
+
+#nk-order-panel .nk-assembly-list > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 1px 0;
+}
+
+#nk-order-panel .nk-assembly-list .nk-qty {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
