@@ -859,6 +859,11 @@
     if (summary.isCart) panel.dataset.nkCart = "1"
 
     const dragState = { didDrag: false }
+    // Drag/dock layout is a basket-only feature; the order panel always uses its
+    // default top-left position.
+    const relayout = () => {
+      if (summary.isCart) applyLayout(panel)
+    }
 
     const header = el("div", "nk-header")
     const title = el("div", "nk-title")
@@ -986,7 +991,7 @@
     collapseBtn.addEventListener("click", () => {
       const isCol = panel.classList.toggle("nk-collapsed")
       collapseBtn.textContent = isCol ? "+" : "–"
-      applyLayout(panel)
+      relayout()
     })
 
     // Click anywhere on the bar (but not on a control) to expand when collapsed.
@@ -997,9 +1002,9 @@
       if (e.target.closest(".nk-controls")) return
       panel.classList.remove("nk-collapsed")
       collapseBtn.textContent = "–"
-      applyLayout(panel)
+      relayout()
     })
-    enableDrag(panel, header, dragState)
+    if (summary.isCart) enableDrag(panel, header, dragState)
     const closeBtn = el("button", "nk-btn", "×")
     closeBtn.title = summary.isCart
       ? "Close"
@@ -1010,7 +1015,8 @@
     )
     controls.appendChild(menuWrap)
     controls.appendChild(shareBtn)
-    controls.appendChild(gearWrap)
+    // Drag/dock is basket-only, so its control is hidden on the order panel.
+    if (summary.isCart) controls.appendChild(gearWrap)
     controls.appendChild(collapseBtn)
     controls.appendChild(closeBtn)
     header.appendChild(controls)
@@ -1077,7 +1083,10 @@
 
     panel.appendChild(body)
     document.body.appendChild(panel)
-    applyLayout(panel)
+    // Basket panel restores its saved drag/dock layout; the order panel stays at
+    // its default position and must clear any margin a prior basket dock left.
+    if (summary.isCart) applyLayout(panel)
+    else clearDockMargin()
     hideHostBackdrop()
   }
 

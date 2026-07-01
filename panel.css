@@ -48,6 +48,10 @@
   background: #2f7d4f;
   color: #fff;
   flex: 0 0 auto;
+}
+
+/* Only the basket panel is draggable, so only it gets the grab cursor. */
+#nk-order-panel[data-nk-cart] .nk-header {
   cursor: grab;
 }
 
