@@ -180,6 +180,7 @@
       reference: order.Reference || order.ExternalReference || "",
       lineCount: lines.length,
       buckets,
+      order, // raw by-id data, for the Excel export
     }
   }
 
@@ -557,43 +558,255 @@
     return wrap
   }
 
-  const csvCell = (value) => {
-    const s = String(value ?? "")
-    return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
-  }
-
-  // Export the summary as a CSV download, honoring the current sort order.
-  const exportCsv = (summary) => {
-    const rows = [["Section", "Name", "Total", "Prepotted", "Regular"]]
-    for (const s of SECTIONS) {
-      const b = summary.buckets[s.key]
-      if (!b.total) continue
-      const sorted = [...b.rows].sort(SORTERS[sortMode] || SORTERS.number)
-      for (const r of sorted) {
-        rows.push(
-          s.simple
-            ? [s.title, r.name, r.total, "", ""]
-            : [s.title, r.name, r.total, r.assembled, r.notAssembled]
-        )
-      }
-      rows.push(
-        s.simple
-          ? [`${s.title} total`, "", b.total, "", ""]
-          : [`${s.title} total`, "", b.total, b.assembled, b.notAssembled]
-      )
-    }
-    const csv = rows.map((r) => r.map(csvCell).join(",")).join("\r\n")
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" })
+  const downloadBlob = (blob, filename) => {
     const url = URL.createObjectURL(blob)
     const a = el("a")
     a.href = url
-    a.download = `${
-      summary.orderNr ? `order-${summary.orderNr}` : "basket-summary"
-    }.csv`
+    a.download = filename
     document.body.appendChild(a)
     a.click()
     a.remove()
     setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }
+
+  // ---------------------------------------------------------------------------
+  // Excel export — replicates the file Nieuwkoop's (broken) "send order data
+  // to email" feature produces: one flat sheet per webshop order (`Origine`).
+  // ---------------------------------------------------------------------------
+  const XLSX_HEADERS = [
+    "Artcode",
+    "Numb.",
+    "Description",
+    "Dimensions",
+    "Gross price",
+    "Discount",
+    "Net price",
+    "Amount",
+  ]
+
+  // "Aglaonema 'Silver Bay' Tuft, pots. 27/25cm " — the trailing space is
+  // in the original export too.
+  const exportDescription = (line) => {
+    let s = [line.Description_EN, line.Variety_EN].filter(Boolean).join(" ")
+    if (line.DiameterCulturePot)
+      s += `, pots. ${line.DiameterCulturePot}/${line.HeightCulturePot}cm`
+    return `${s} `
+  }
+
+  // Rectangular: LxWxH, round: DxH, plants: WxH.
+  const exportDimensions = (line) => {
+    const n = (k) => Number(line[k]) || 0
+    const parts = n("Length")
+      ? [n("Length"), n("Width"), n("Height")]
+      : n("Diameter")
+      ? [n("Diameter"), n("Height")]
+      : [n("Width"), n("Height")]
+    return parts.some(Boolean) ? `${parts.join("x")}cm` : ""
+  }
+
+  const buildOrderExportRows = (lines) =>
+    [...lines]
+      .sort((a, b) => (Number(a.LineID) || 0) - (Number(b.LineID) || 0))
+      .map((line) => {
+        const qty = Number(line.Quantity) || 0
+        const net = Number(line.NetPrice) || 0
+        return {
+          code: line.Itemcode || "",
+          url: line.Image || "",
+          qty,
+          desc: exportDescription(line),
+          dims: exportDimensions(line),
+          gross: Number(line.Price) || 0,
+          disc: (Number(line.Discount) || 0) / 100,
+          net,
+          amount: Math.round(qty * net * 100) / 100,
+        }
+      })
+
+  // Combined orders hold lines from several webshop orders; split them so each
+  // export matches what the site would send for that webshop order.
+  const groupLinesByOrigin = (order) => {
+    const fallback = order.ExternalReference || order.OrderNr || "order"
+    const groups = new Map()
+    for (const line of order.SalesOrderLines || []) {
+      const key = line.Origine || fallback
+      if (!groups.has(key)) groups.set(key, [])
+      groups.get(key).push(line)
+    }
+    return groups
+  }
+
+  const xmlEsc = (v) =>
+    String(v ?? "").replace(
+      /[<>&"]/g,
+      (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[c])
+    )
+
+  // Style indexes match the cellXfs in XLSX_STYLES below.
+  const XS = { header: 1, headerRight: 2, link: 3, qty: 4, money: 5, pct: 6 }
+
+  const XLSX_STYLES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="1"><numFmt numFmtId="164" formatCode="#,##0;\\(#,##0\\)"/></numFmts><fonts count="3"><font><sz val="11"/><name val="Calibri"/><family val="2"/></font><font><b/><sz val="11"/><name val="Calibri"/><family val="2"/></font><font><u/><sz val="11"/><color rgb="FF0563C1"/><name val="Calibri"/><family val="2"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/><xf numFmtId="0" fontId="2" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="7"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="right"/></xf><xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="1"/><xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyAlignment="1"><alignment horizontal="left"/></xf><xf numFmtId="39" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="10" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs><cellStyles count="2"><cellStyle name="Hyperlink" xfId="1" builtinId="8"/><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`
+
+  const buildSheetXml = (rows) => {
+    const COLS = "ABCDEFGH"
+    const str = (ref, v, s) =>
+      `<c r="${ref}"${s ? ` s="${s}"` : ""} t="inlineStr"><is><t xml:space="preserve">${xmlEsc(
+        v
+      )}</t></is></c>`
+    const num = (ref, v, s) => `<c r="${ref}" s="${s}"><v>${v}</v></c>`
+
+    const header = XLSX_HEADERS.map((h, i) =>
+      str(`${COLS[i]}1`, h, i >= 4 ? XS.headerRight : XS.header)
+    ).join("")
+    const body = rows
+      .map((r, i) => {
+        const n = i + 2
+        return (
+          `<row r="${n}">` +
+          str(`A${n}`, r.code, r.url ? XS.link : 0) +
+          num(`B${n}`, r.qty, XS.qty) +
+          str(`C${n}`, r.desc) +
+          str(`D${n}`, r.dims) +
+          num(`E${n}`, r.gross, XS.money) +
+          num(`F${n}`, r.disc, XS.pct) +
+          num(`G${n}`, r.net, XS.money) +
+          num(`H${n}`, r.amount, XS.money) +
+          `</row>`
+        )
+      })
+      .join("")
+    const links = rows
+      .map((r, i) =>
+        r.url ? `<hyperlink ref="A${i + 2}" r:id="rId${i + 1}"/>` : ""
+      )
+      .join("")
+    return (
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+      `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">` +
+      `<cols><col min="1" max="1" width="20.7109375" customWidth="1"/><col min="2" max="2" width="8.7109375" customWidth="1"/><col min="3" max="3" width="50.7109375" customWidth="1"/><col min="4" max="4" width="20.7109375" customWidth="1"/><col min="5" max="8" width="10.7109375" customWidth="1"/></cols>` +
+      `<sheetData><row r="1">${header}</row>${body}</sheetData>` +
+      (links ? `<hyperlinks>${links}</hyperlinks>` : "") +
+      `<pageSetup paperSize="9" orientation="portrait"/></worksheet>`
+    )
+  }
+
+  const buildXlsxFiles = (rows, sheetName) => {
+    const NS_REL = "http://schemas.openxmlformats.org/package/2006/relationships"
+    const T = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+    const CT = "application/vnd.openxmlformats-officedocument"
+    const XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
+    // Excel sheet names: max 31 chars, none of []:*?/\
+    const name = String(sheetName).replace(/[[\]:*?/\\]/g, "").slice(0, 31) || "Order"
+    const linkRels = rows
+      .map((r, i) =>
+        r.url
+          ? `<Relationship Id="rId${i + 1}" Type="${T}/hyperlink" Target="${xmlEsc(
+              r.url
+            )}" TargetMode="External"/>`
+          : ""
+      )
+      .join("")
+    return [
+      [
+        "[Content_Types].xml",
+        `${XML}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="${CT}.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="${CT}.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="${CT}.spreadsheetml.styles+xml"/></Types>`,
+      ],
+      [
+        "_rels/.rels",
+        `${XML}<Relationships xmlns="${NS_REL}"><Relationship Id="rId1" Type="${T}/officeDocument" Target="xl/workbook.xml"/></Relationships>`,
+      ],
+      [
+        "xl/workbook.xml",
+        `${XML}<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="${T}"><sheets><sheet name="${xmlEsc(
+          name
+        )}" sheetId="1" r:id="rId1"/></sheets></workbook>`,
+      ],
+      [
+        "xl/_rels/workbook.xml.rels",
+        `${XML}<Relationships xmlns="${NS_REL}"><Relationship Id="rId1" Type="${T}/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="${T}/styles" Target="styles.xml"/></Relationships>`,
+      ],
+      ["xl/styles.xml", XLSX_STYLES],
+      ["xl/worksheets/sheet1.xml", buildSheetXml(rows)],
+      [
+        "xl/worksheets/_rels/sheet1.xml.rels",
+        `${XML}<Relationships xmlns="${NS_REL}">${linkRels}</Relationships>`,
+      ],
+    ]
+  }
+
+  // Minimal ZIP writer (STORED, no compression) — all an .xlsx needs.
+  const CRC_TABLE = (() => {
+    const t = new Uint32Array(256)
+    for (let n = 0; n < 256; n++) {
+      let c = n
+      for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
+      t[n] = c >>> 0
+    }
+    return t
+  })()
+
+  const crc32 = (bytes) => {
+    let c = 0xffffffff
+    for (let i = 0; i < bytes.length; i++)
+      c = CRC_TABLE[(c ^ bytes[i]) & 0xff] ^ (c >>> 8)
+    return (c ^ 0xffffffff) >>> 0
+  }
+
+  const zipStored = (files) => {
+    const enc = new TextEncoder()
+    const parts = []
+    const central = []
+    let offset = 0
+    for (const [name, content] of files) {
+      const nameBytes = enc.encode(name)
+      const data = enc.encode(content)
+      const crc = crc32(data)
+      const local = new DataView(new ArrayBuffer(30))
+      local.setUint32(0, 0x04034b50, true)
+      local.setUint16(4, 20, true) // version needed
+      local.setUint16(6, 0x0800, true) // UTF-8 names
+      local.setUint32(14, crc, true)
+      local.setUint32(18, data.length, true)
+      local.setUint32(22, data.length, true)
+      local.setUint16(26, nameBytes.length, true)
+      parts.push(local, nameBytes, data)
+
+      const cd = new DataView(new ArrayBuffer(46))
+      cd.setUint32(0, 0x02014b50, true)
+      cd.setUint16(4, 20, true) // version made by
+      cd.setUint16(6, 20, true)
+      cd.setUint16(8, 0x0800, true)
+      cd.setUint32(16, crc, true)
+      cd.setUint32(20, data.length, true)
+      cd.setUint32(24, data.length, true)
+      cd.setUint16(28, nameBytes.length, true)
+      cd.setUint32(42, offset, true)
+      central.push(cd, nameBytes)
+      offset += 30 + nameBytes.length + data.length
+    }
+    const cdSize = central.reduce((n, p) => n + p.byteLength, 0)
+    const end = new DataView(new ArrayBuffer(22))
+    end.setUint32(0, 0x06054b50, true)
+    end.setUint16(8, files.length, true)
+    end.setUint16(10, files.length, true)
+    end.setUint32(12, cdSize, true)
+    end.setUint32(16, offset, true)
+    return new Blob([...parts, ...central, end], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    })
+  }
+
+  // One .xlsx per webshop order, staggered so the browser doesn't drop any.
+  const exportOrderXlsx = (order) => {
+    let delay = 0
+    for (const [origin, lines] of groupLinesByOrigin(order)) {
+      const blob = zipStored(
+        buildXlsxFiles(buildOrderExportRows(lines), origin)
+      )
+      setTimeout(() => downloadBlob(blob, `${origin}.xlsx`), delay)
+      delay += 300
+    }
   }
 
   const PRINT_CSS = `
@@ -902,7 +1115,8 @@
       })
       menu.appendChild(item)
     }
-    addItem("Export CSV", () => exportCsv(summary))
+    if (summary.order)
+      addItem("Export Excel", () => exportOrderXlsx(summary.order))
     addItem("Print", () => printSummary(summary))
     menuBtn.addEventListener("click", (e) => {
       e.stopPropagation()

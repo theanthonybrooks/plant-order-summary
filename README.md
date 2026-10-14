@@ -8,7 +8,7 @@ A Chrome extension that adds a floating summary panel to:
 To give you a quick overview of the plant, pot, soil, and accessory counts.
 Plants, pots, and soil are split into **Prepotted** vs **Regular**, whereas
 accessories only count the number. Additionally, you have optional sorting by
-name/total, backorder alerts at checkout, CSV export, and print.
+name/total, backorder alerts at checkout, Excel export of orders, and print.
 
 &nbsp;
 
@@ -98,7 +98,10 @@ icons/            toolbar icons
 3. In the panel you can:
    - **Sort** the tables by number (default) or by name, using the dropdown on
      the first section's title row.
-   - **Export → Export CSV** to download the summary as a spreadsheet.
+   - **Export → Export Excel** (orders only) to download the order lines in
+     the same layout as Nieuwkoop's own order export. Combined orders download
+     one file per webshop order (e.g. `N1359555.xlsx`); your browser may ask
+     once to allow multiple downloads.
    - **Export → Print** to open a clean printable view.
      - Note: Print opens a popup window — allow popups for the site if your
        browser blocks it.
