@@ -64,6 +64,16 @@
   cursor: pointer;
 }
 
+/* Collapsed: the panel is only as tall as the header, so let dropdown menus
+   spill out below it. The header takes over the corner rounding. */
+#nk-order-panel.nk-collapsed {
+  overflow: visible;
+}
+
+#nk-order-panel.nk-collapsed .nk-header {
+  border-radius: inherit;
+}
+
 /* Docked panels are pinned by CSS, so the header isn't a drag handle. */
 #nk-order-panel.nk-docked .nk-header {
   cursor: default;
@@ -223,7 +233,8 @@ items are backordered. The backorder rule is last so red wins when both. */
 #nk-order-panel .nk-body {
   max-height: 90dvh;
   overflow-y: auto;
-  padding: 10px 12px 12px;
+  scrollbar-gutter: stable both-edges;
+  padding: 10px 12px 12px 9px;
   flex: 1 1 auto;
 }
 

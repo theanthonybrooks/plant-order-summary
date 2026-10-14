@@ -822,8 +822,15 @@
     .nk-col-name { text-align: left; }
     .nk-col-num { text-align: right; font-variant-numeric: tabular-nums; }
     tfoot td { font-weight: 700; border-top: 2px solid #ccc; border-bottom: none; }
+    .nk-print-toolbar { position: sticky; top: 0; display: flex; justify-content: flex-end; gap: 8px; margin: -24px -24px 16px; padding: 10px 24px; background: #f6f8f7; border-bottom: 1px solid #d0d5dd; }
+    .nk-print-toolbar button { font: inherit; font-size: 13px; font-weight: 600; padding: 6px 14px; border-radius: 6px; border: 1px solid #d0d5dd; background: #fff; color: #1a1a1a; cursor: pointer; }
+    .nk-print-toolbar .nk-print-primary { background: #2f7d4f; border-color: #2f7d4f; color: #fff; }
+    @media print { .nk-print-toolbar { display: none; } }
   `
 
+  // Opens a preview window with its own Print/Close toolbar instead of firing
+  // print() straight away: the browser's print dialog is modal and would leave
+  // the preview unusable underneath it.
   const printSummary = (summary) => {
     const w = window.open("", "_blank", "width=820,height=900")
     if (!w) {
@@ -835,6 +842,19 @@
     const style = doc.createElement("style")
     style.textContent = PRINT_CSS
     doc.head.appendChild(style)
+
+    const toolbar = doc.createElement("div")
+    toolbar.className = "nk-print-toolbar"
+    const printBtn = doc.createElement("button")
+    printBtn.className = "nk-print-primary"
+    printBtn.textContent = "Print"
+    printBtn.addEventListener("click", () => w.print())
+    const closeBtn = doc.createElement("button")
+    closeBtn.textContent = "Close"
+    closeBtn.addEventListener("click", () => w.close())
+    toolbar.appendChild(closeBtn)
+    toolbar.appendChild(printBtn)
+    doc.body.appendChild(toolbar)
 
     const h1 = doc.createElement("h1")
     h1.textContent = `${summary.title}${
@@ -858,7 +878,7 @@
     }
 
     w.focus()
-    setTimeout(() => w.print(), 150)
+    printBtn.focus()
   }
 
   // ---------------------------------------------------------------------------
